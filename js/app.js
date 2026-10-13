@@ -58,18 +58,19 @@ async function boot() {
   applyTheme();
   store = makeStore();
   setStatus('busy', 'Caricamento…');
+  let loadError = null;
   try {
     data = await store.load();
   } catch (e) {
     setStatus('err', 'Errore');
-    toast(e.message, true);
+    loadError = e.message;
     data = null;
   }
   $('#boot').remove();
   if (!data) {
     setStatus('err', 'Nessun dato');
     showView('impostazioni');
-    $('#v-impostazioni').insertAdjacentHTML('afterbegin', '<div class="note warn" style="margin-bottom:14px">Nessun dato caricato. Collega il repository GitHub privato con il file <code>ledger.json</code>, oppure importa un backup JSON.</div>');
+    $('#v-impostazioni').insertAdjacentHTML('afterbegin', `<div class="note ${loadError ? 'bad' : 'warn'}" style="margin-bottom:14px">${loadError ? `<strong>Collegamento non riuscito.</strong> ${esc(loadError)}` : 'Nessun dato caricato. Collega il repository GitHub privato con il file <code>ledger.json</code>, oppure importa un backup JSON.'}</div>`);
     renderSettings();
     return;
   }
