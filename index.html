@@ -6,10 +6,10 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Ortigia Investimento</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M8 16 16 9l8 7v8h-5v-5h-6v5H8z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css?v=20261013e">
+  <link rel="stylesheet" href="css/style.css?v=20261013f">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-  <script type="module" src="js/app.js?v=20261013e"></script>
+  <script type="module" src="js/app.js?v=20261013f"></script>
 </head>
 <body>
 <header class="top">
@@ -20,8 +20,15 @@
         <span id="t-zona">Monitoraggio rendimento</span>
       </div>
       <div class="top-actions">
+        <span class="pill priv-badge" id="priv-pill" title="Importi nascosti">Importi nascosti</span>
         <span class="pill" id="src-pill" title="Origine dei dati"><span class="dot"></span><span id="src-label">…</span></span>
-        <button class="btn ghost small" id="theme-btn" aria-label="Cambia tema">◐</button>
+        <button class="icon-btn" id="privacy-btn" aria-pressed="false" aria-label="Nascondi importi" title="Nascondi importi">
+          <svg class="eye-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/></svg>
+        </button>
+        <button class="icon-btn" id="theme-btn" aria-label="Cambia tema">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg>
+        </button>
       </div>
     </div>
     <nav class="tabs" role="tablist" aria-label="Sezioni">
@@ -70,9 +77,9 @@
       </div>
     </div>
 
-    <div class="grid g4" style="margin-top:14px" id="kpi-grid"></div>
+    <div class="grid kpis eight mt" id="kpi-grid"></div>
 
-    <div class="grid g2" style="margin-top:14px">
+    <div class="grid g2 mt">
       <div class="card">
         <div class="card-head"><h2>Ricavi lordi mensili</h2><span class="sub">reale vs storico gestione precedente</span></div>
         <div class="toolbar" id="ref-chips" style="margin-bottom:8px"></div>
@@ -84,21 +91,21 @@
       </div>
     </div>
 
-    <div class="card" style="margin-top:14px">
+    <div class="card mt">
       <div class="card-head"><h2>Posizione netta nel tempo</h2><span class="sub">reale + proiezione dello scenario del simulatore</span>
         <div class="right"><span class="badge" id="proj-badge">—</span></div></div>
       <div class="chart tall"><canvas id="c-posizione" aria-label="Grafico posizione netta"></canvas></div>
       <div class="legend" id="pos-legend"></div>
-      <p class="muted" style="font-size:12px;margin-top:8px">Posizione netta = (valore immobile − debito residuo) + cash flow cumulato − capitale proprio investito. Sopra lo zero hai recuperato tutto, inclusi notaio, agenzia e spese bancarie.</p>
+      <p class="fine">Posizione netta = (valore immobile − debito residuo) + cash flow cumulato − capitale proprio investito. Sopra lo zero hai recuperato tutto, inclusi notaio, agenzia e spese bancarie.</p>
     </div>
 
-    <div class="card" style="margin-top:14px">
+    <div class="card mt">
       <div class="card-head"><h2>Conto economico mensile</h2><span class="sub">valori in € · <span class="est">ˢ</span> = include stime</span>
         <div class="right"><button class="btn small" id="csv-mensile">Esporta CSV</button></div></div>
       <div class="table-wrap"><table id="t-mensile"></table></div>
     </div>
 
-    <div class="grid g2" style="margin-top:14px">
+    <div class="grid g2 mt">
       <div class="card">
         <div class="card-head"><h2>Capitale proprio investito</h2><span class="badge ok">dati certi</span></div>
         <dl class="kv" id="kv-acquisto"></dl>
@@ -146,7 +153,7 @@
         </form>
       </div>
     </div>
-    <div class="card" style="margin-top:14px">
+    <div class="card mt">
       <div class="table-wrap"><table id="t-incassi"></table></div>
     </div>
 
@@ -169,11 +176,11 @@
       </div>
       <div class="card">
         <div class="card-head"><h3>Come funziona</h3></div>
-        <p class="ink2" style="font-size:14px">Per ogni categoria la dashboard usa l'importo reale nei mesi coperti da una bolletta; nei mesi non ancora coperti usa la quota mensile del budget (modificabile in <em>Impostazioni</em>), marcata come stima.</p>
-        <p class="ink2" style="font-size:14px">Esempi: bolletta Edison di 180 € per nov–dic → competenza 2026-11 → 2026-12. TARI annuale → competenza gen–dic. Un <strong>rimborso anticipato</strong> riduce il debito e ricalcola la rata. Una <strong>cedolare versata (F24)</strong> abbassa le tasse da accantonare.</p>
+        <p class="prose">Per ogni categoria la dashboard usa l'importo reale nei mesi coperti da una bolletta; nei mesi non ancora coperti usa la quota mensile del budget (modificabile in <em>Impostazioni</em>), marcata come stima.</p>
+        <p class="prose">Esempi: bolletta Edison di 180 € per nov–dic → competenza 2026-11 → 2026-12. TARI annuale → competenza gen–dic. Un <strong>rimborso anticipato</strong> riduce il debito e ricalcola la rata. Una <strong>cedolare versata (F24)</strong> abbassa le tasse da accantonare.</p>
       </div>
     </div>
-    <div class="card" style="margin-top:14px"><div class="table-wrap"><table id="t-spese"></table></div></div>
+    <div class="card mt"><div class="table-wrap"><table id="t-spese"></table></div></div>
 
     <div class="section-title"><h2>Stime di valore</h2><span class="sub">perizie, valutazioni agenzia, tue stime</span></div>
     <div class="card">
@@ -194,10 +201,10 @@
       <div class="seg" id="seg-preset"></div>
       <button class="btn small" id="preset-reale" title="Usa gli ultimi 12 mesi reali (se disponibili)">Reale (12 mesi)</button>
     </div>
-    <div class="grid" style="grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:14px" id="sim-layout">
+    <div class="grid" id="sim-layout">
       <div class="card stack" id="sim-inputs"></div>
       <div class="stack">
-        <div class="grid g4" id="sim-kpi"></div>
+        <div class="grid kpis" id="sim-kpi"></div>
         <div class="card">
           <div class="card-head"><h2>Posizione netta e cash flow cumulato</h2><span class="sub">dal rogito</span></div>
           <div class="toolbar" id="cmp-chips" style="margin-bottom:8px"><span class="lbl">Confronta con</span></div>
@@ -214,8 +221,8 @@
 
   <!-- MERCATO -->
   <section class="view" id="v-mercato" role="tabpanel">
-    <div class="grid g4" id="mk-kpi"></div>
-    <div class="grid g2" style="margin-top:14px">
+    <div class="grid kpis" id="mk-kpi"></div>
+    <div class="grid g2 mt">
       <div class="card">
         <div class="card-head"><h2>Prezzo €/m² Ortigia</h2><span class="sub">luglio di ogni anno · Idealista</span></div>
         <div class="chart"><canvas id="c-mk-anni"></canvas></div>
@@ -225,24 +232,24 @@
         <div class="chart"><canvas id="c-mk-mesi"></canvas></div>
       </div>
     </div>
-    <div class="card" style="margin-top:14px">
+    <div class="card mt">
       <div class="card-head"><h3>Aggiungi una rilevazione mensile</h3><span class="sub"><a id="mk-link" target="_blank" rel="noopener">apri il report Idealista ↗</a></span></div>
       <form id="f-mercato" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-items:end">
         <label class="f">Mese<input type="month" name="mese" required></label>
         <label class="f">€/m²<input type="number" name="eur" required></label>
         <button class="btn primary" type="submit">Aggiungi</button>
       </form>
-      <p class="muted" style="font-size:12px;margin-top:10px">L'indice serve solo come riferimento: hai pagato 3.772 €/m², circa il 41% sopra la media di Ortigia, per posizione, ristrutturazione e rendita già avviata. Il valore "Indice Idealista" applica la variazione percentuale dell'indice al prezzo pagato, senza confrontare i valori assoluti.</p>
+      <p class="fine">L'indice serve solo come riferimento: hai pagato 3.772 €/m², circa il 41% sopra la media di Ortigia, per posizione, ristrutturazione e rendita già avviata. Il valore "Indice Idealista" applica la variazione percentuale dell'indice al prezzo pagato, senza confrontare i valori assoluti.</p>
     </div>
   </section>
 
   <!-- GETQUIN -->
   <section class="view" id="v-getquin" role="tabpanel">
-    <div class="grid g3" id="gq-kpi"></div>
-    <div class="grid g2" style="margin-top:14px">
+    <div class="grid kpis" id="gq-kpi"></div>
+    <div class="grid g2 mt">
       <div class="card">
         <div class="card-head"><h2>Come inserire la casa su Getquin</h2></div>
-        <ol class="ink2" style="font-size:14px;padding-left:18px;margin:0">
+        <ol class="steps">
           <li>Getquin non offre un'API pubblica per scrivere dati dall'esterno: gli immobili si inseriscono come <strong>asset manuale</strong> (Aggiungi → Altri asset / Immobili).</li>
           <li><strong>Prezzo d'acquisto</strong>: usa il <em>capitale proprio investito</em> come costo di carico, così la performance su Getquin coincide con il tuo ritorno reale.</li>
           <li><strong>Valore attuale</strong>: inserisci il <em>patrimonio netto immobiliare</em> (valore − debito residuo) qui accanto. Se il tuo account permette di registrare passività, inserisci invece il valore pieno e il mutuo a parte.</li>
@@ -273,12 +280,12 @@
           </div>
           <div class="actions"><button class="btn primary" type="submit">Collega e ricarica</button></div>
           <div id="src-check" style="margin-top:10px"></div>
-          <p class="muted" style="font-size:12px;margin-top:10px">Il token resta solo nel browser di questo dispositivo e non viene mai salvato nel repository. Ripeti l'operazione una volta su ogni dispositivo.</p>
+          <p class="fine">Il token resta solo nel browser di questo dispositivo e non viene mai salvato nel repository. Ripeti l'operazione una volta su ogni dispositivo.</p>
         </form>
       </div>
       <div class="card">
         <div class="card-head"><h2>Backup</h2></div>
-        <p class="ink2" style="font-size:14px">Esporta l'intero registro in JSON, oppure importane uno: in modalità GitHub l'import viene salvato nel repository.</p>
+        <p class="prose">Esporta l'intero registro in JSON, oppure importane uno: in modalità GitHub l'import viene salvato nel repository.</p>
         <div class="actions">
           <button class="btn" id="exp-json">Esporta JSON</button>
           <label class="btn">Importa JSON<input type="file" id="imp-json" accept=".json" hidden></label>

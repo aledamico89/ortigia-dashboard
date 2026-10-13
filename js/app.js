@@ -1,8 +1,8 @@
 import {
   CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js?v=20261013e';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261013e';
+} from './finance.js?v=20261013f';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261013f';
 
 // ---------- Stato ----------
 let data = null;
@@ -10,7 +10,7 @@ let store = null;
 const UI_KEY = 'ortigia.ui.v1';
 const ui = Object.assign({
   view: 'panoramica', valore: 'nominale', stime: true, attr: 'check_in',
-  refs: { 2024: false, 2025: true, 2026: true }, cmp: {}, theme: 'auto', sim: null,
+  refs: { 2024: false, 2025: true, 2026: true }, cmp: {}, theme: 'auto', sim: null, privacy: false,
 }, (() => { try { return JSON.parse(localStorage.getItem(UI_KEY)) || {}; } catch { return {}; } })());
 const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* ignore */ } };
 const charts = {};
@@ -20,7 +20,12 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 // ---------- Formattazione ----------
 const nf0 = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 0, useGrouping: 'always' });
 const nf2 = new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' });
-const eur = (x, d = 0) => (x == null || Number.isNaN(x) ? '—' : `${(d ? nf2 : nf0).format(Math.abs(x) < (d ? 0.005 : 0.5) ? 0 : x)} €`);
+const MASK = '•••• €';
+const eurRaw = (x, d = 0) => (x == null || Number.isNaN(x) ? '—' : `${(d ? nf2 : nf0).format(Math.abs(x) < (d ? 0.005 : 0.5) ? 0 : x)} €`);
+// In modalità privacy gli importi assoluti diventano "•••• €": restano visibili solo segni e percentuali.
+const eur = (x, d = 0) => (ui.privacy && x != null && !Number.isNaN(x) ? MASK : eurRaw(x, d));
+// Oscura anche gli importi scritti dentro testi descrittivi (es. "caparra 4.300 €", "782,48 €")
+const maskText = (t) => (ui.privacy ? String(t ?? '').replace(/(?<![/\d])\d{1,3}(?:\.\d{3})+(?:,\d+)?|(?<![/\d.,])\d{3,}(?:,\d{2})?(?![/\d])|\d+,\d{2}/g, '••••') : String(t ?? ''));
 const eurS = (x, d = 0) => (x > 0.004 ? '+' : x < -0.004 ? '−' : '') + eur(Math.abs(x), d);
 const pct = (x, d = 1) => (x == null || !Number.isFinite(x) ? '—' : `${new Intl.NumberFormat('it-IT', { minimumFractionDigits: d, maximumFractionDigits: d }).format(x * 100)}%`);
 const cls = (x) => (x > 0.004 ? 'pos' : x < -0.004 ? 'neg' : '');
@@ -56,6 +61,8 @@ async function persist(message) {
 
 async function boot() {
   applyTheme();
+  applyPrivacy();
+  if (window.Chart) { Chart.defaults.font.family = getComputedStyle(document.body).fontFamily; Chart.defaults.font.size = 13; }
   store = makeStore();
   setStatus('busy', 'Caricamento…');
   let loadError = null;
@@ -99,8 +106,21 @@ $$('nav.tabs button').forEach((b) => b.addEventListener('click', () => showView(
 function applyTheme() {
   if (ui.theme === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = ui.theme;
-  $('#theme-btn').title = `Tema: ${ui.theme}`;
+  $('#theme-btn').title = `Tema: ${{ auto: 'automatico', light: 'chiaro', dark: 'scuro' }[ui.theme]}`;
 }
+function applyPrivacy() {
+  document.body.classList.toggle('privacy', ui.privacy);
+  const b = $('#privacy-btn');
+  b.setAttribute('aria-pressed', String(ui.privacy));
+  const lbl = ui.privacy ? 'Mostra importi' : 'Nascondi importi';
+  b.setAttribute('aria-label', lbl); b.title = lbl;
+  $('.eye-on', b).style.display = ui.privacy ? 'none' : '';
+  $('.eye-off', b).style.display = ui.privacy ? '' : 'none';
+}
+$('#privacy-btn').addEventListener('click', () => {
+  ui.privacy = !ui.privacy; saveUI(); applyPrivacy();
+  if (data) { renderAll(); requestAnimationFrame(() => ({ panoramica: renderPanoramica, simulatore: updateSim, mercato: renderMercato }[ui.view]?.())); }
+});
 $('#theme-btn').addEventListener('click', () => {
   ui.theme = { auto: 'light', light: 'dark', dark: 'auto' }[ui.theme]; saveUI(); applyTheme();
   if (data) renderAll();
@@ -131,13 +151,14 @@ function baseOptions(extra = {}) {
       legend: { display: false },
       tooltip: {
         backgroundColor: css('--surface'), titleColor: css('--ink'), bodyColor: css('--ink-2'),
-        borderColor: css('--axis'), borderWidth: 1, padding: 10, boxPadding: 4, usePointStyle: true,
+        borderColor: css('--axis'), borderWidth: 1, padding: 12, boxPadding: 6, usePointStyle: true,
+        titleFont: { size: 14, weight: '600' }, bodyFont: { size: 14 },
         callbacks: { label: (c) => ` ${c.dataset.label}: ${c.raw == null ? '—' : eur(c.raw)}` },
       },
     },
     scales: {
-      x: { grid: { display: false }, border: { color: axis }, ticks: { color: muted, maxRotation: 0, autoSkipPadding: 12, font: { size: 11 } } },
-      y: { grid: { color: grid }, border: { display: false }, ticks: { color: muted, font: { size: 11 }, callback: (v) => nf0.format(v) } },
+      x: { grid: { display: false }, border: { color: axis }, ticks: { color: muted, maxRotation: 0, autoSkipPadding: 14, font: { size: 13 } } },
+      y: { grid: { color: grid }, border: { display: false }, ticks: { color: muted, font: { size: 13 }, display: !ui.privacy, callback: (v) => nf0.format(v) } },
     },
     ...extra,
   };
@@ -201,17 +222,19 @@ function renderPanoramica() {
   const scenLabel = presets(data)[p.preset]?.label || 'personalizzato';
 
   // Hero
-  $('#h-cf').innerHTML = `<span class="${cls(k.cfCum)}">${eurS(k.cfCum)}</span>`;
+  $('#h-cf').innerHTML = ui.privacy
+    ? `<span class="${cls(k.cfCum)}">${k.cfCum >= 0 ? '+' : '−'}${pct(Math.abs(k.cfCum / k.cap))}</span> <span class="muted" style="font-size:var(--fs-lg);font-weight:500">del capitale investito</span>`
+    : `<span class="${cls(k.cfCum)}">${eurS(k.cfCum)}</span>`;
   const lastInc = data.incassi.slice().sort((a, b) => a.mese.localeCompare(b.mese)).pop();
   $('#h-meta').innerHTML = `${k.mesi} ${k.mesi === 1 ? 'mese' : 'mesi'} di gestione (${monthLabel(data.immobile.inizio_gestione, true)} → ${monthLabel(fine, true)})`
     + (lastInc ? ` · ultimo incasso: ${monthLabel(lastInc.mese, true)}${lastInc.stato === 'provvisorio' ? ' <span class="badge warn">provvisorio</span>' : ''}` : '');
   const m1 = Math.max(0, Math.min(1, k.recuperoCassa));
   $('#m1').style.width = `${m1 * 100}%`; $('#m1').classList.toggle('neg', k.cfCum < 0);
-  $('#m1-txt').textContent = `${pct(k.recuperoCassa, 0)} di ${eur(k.cap)}`;
+  $('#m1-txt').textContent = ui.privacy ? `${pct(k.recuperoCassa, 0)} recuperato` : `${pct(k.recuperoCassa, 0)} di ${eur(k.cap)}`;
   $('#m1-sub').textContent = etaCassa ? `Previsto ${monthLabel(etaCassa, true)} · scenario ${scenLabel}` : `Non raggiunto entro 30 anni con lo scenario ${scenLabel}`;
   const m2 = Math.max(0, Math.min(1, k.recuperoPatr));
   $('#m2').style.width = `${m2 * 100}%`; $('#m2').classList.toggle('neg', k.recuperoPatr < 0);
-  $('#m2-txt').textContent = `${pct(k.recuperoPatr, 0)} di ${eur(k.trans)}`;
+  $('#m2-txt').textContent = ui.privacy ? `${pct(k.recuperoPatr, 0)} recuperato` : `${pct(k.recuperoPatr, 0)} di ${eur(k.trans)}`;
   $('#m2-sub').textContent = k.posizione >= 0 ? 'Raggiunto' : etaPatr ? `Previsto ${monthLabel(etaPatr, true)} · rivalutazione ${pct(p.rivalutazione)} annua` : `Non raggiunto entro 30 anni con lo scenario ${scenLabel}`;
 
   // KPI
@@ -220,12 +243,23 @@ function renderPanoramica() {
     ['Rendimento netto su prezzo', pct(k.rendNetto), `${ann} · reddito netto dopo tasse ÷ ${eur(data.immobile.prezzo)}`, cls(k.rendNetto), 'Reddito operativo dopo PM, portali, cedolare e costi, prima della rata del mutuo, diviso il prezzo di acquisto.'],
     ['Cash-on-cash', pct(k.cashOnCash), `${ann} · cash flow ÷ capitale proprio`, cls(k.cashOnCash), 'Cash flow netto (dopo la rata) annualizzato, diviso i soldi usciti di tasca tua.'],
     ['ROI totale', pct(k.roiTot), `annualizzato ${pct(k.roiTotAnn)} · include capitale rimborsato${ui.valore !== 'nominale' ? ' e rivalutazione' : ''}`, cls(k.roiTot), '(Cash flow cumulato + quota capitale del mutuo rimborsata + rivalutazione) ÷ capitale proprio.'],
+  ];
+  const giorni = R.reduce((s, r) => { const [y, m] = r.mese.split('-').map(Number); return s + new Date(y, m, 0).getDate(); }, 0) || 1;
+  const L = k.lordo || 1;
+  // In modalità privacy le card con importi assoluti diventano indicatori percentuali
+  tiles.push(...(ui.privacy ? [
+    ['Occupazione', pct(k.notti / giorni, 0), `${nf0.format(k.notti)} notti su ${giorni} giorni`, '', 'Notti vendute diviso giorni del periodo.'],
+    ['Mutuo rimborsato', pct(k.capRimb / data.mutuo.importo), 'quota capitale restituita', '', 'Percentuale del mutuo già rimborsata.'],
+    ['Loan to value', pct(k.ltv, 0), 'debito ÷ valore immobile', '', 'Quota dell\'immobile ancora finanziata dalla banca.'],
+    ['Tasse sul lordo', pct(k.ced / L), 'cedolare maturata ÷ lordo', '', 'Peso della cedolare secca sugli incassi.'],
+    ['Costi sul lordo', pct(k.costi / L), k.costiStimati ? `di cui stime ${pct(k.costiStimati / L)}` : 'tutti da spese reali', '', 'Utenze, polizza, TARI, IMU e manutenzione in rapporto agli incassi.'],
+  ] : [
     ['Lordo incassato', eur(k.lordo), `${nf0.format(k.notti)} notti · ADR ${k.notti ? eur(k.lordo / k.notti) : '—'}`, '', 'Somma pagata dagli ospiti, esclusa la tassa di soggiorno.'],
     ['Debito residuo', eur(k.debito), `capitale rimborsato ${eur(k.capRimb)}`, '', 'Debito residuo del mutuo dopo l\'ultima rata del periodo.'],
     ['Patrimonio netto immobiliare', eur(k.equity), `LTV ${pct(k.ltv, 0)} · valore ${eur(k.valore)}`, '', 'Valore dell\'immobile (secondo la modalità scelta) meno il debito residuo.'],
     ['Cedolare da accantonare', eur(k.tasseDaAccantonare), `maturata ${eur(k.ced)} · trattenuta ${eur(k.ritenute)}`, '', 'Cedolare secca maturata meno le ritenute già trattenute dagli intermediari e gli F24 registrati.'],
     ['Costi operativi', eur(k.costi), k.costiStimati ? `di cui stimati ${eur(k.costiStimati)}` : 'tutti da spese reali', '', 'Utenze, polizza, TARI, IMU, manutenzione: reali dove ci sono bollette, altrimenti quota di budget.'],
-  ];
+  ]));
   $('#kpi-grid').innerHTML = tiles.map(([l, v, s, c, info]) => `<div class="card tile"><div class="t-label">${esc(l)} <span class="info" title="${esc(info)}" tabindex="0" aria-label="${esc(info)}">i</span></div><div class="t-value ${c}">${v}</div><div class="t-sub">${s}</div></div>`).join('');
 
   renderRicaviChart(R);
@@ -274,7 +308,7 @@ function renderSplit(k) {
   $('#split').innerHTML = `<div class="stack" style="--gap:8px">${rows.map(([l, v]) => `
     <div><div class="meter-row"><span>${l}</span><span class="num">${eur(v)} <small>· ${pct(v / L, 0)}</small></span></div>${bar(v, css('--s1'))}</div>`).join('')}
     <div><div class="meter-row"><strong>Cash flow netto</strong><span class="num ${cls(k.cfCum)}"><strong>${eurS(k.cfCum)}</strong> <small>· ${pct(k.cfCum / L, 0)}</small></span></div>${bar(k.cfCum, k.cfCum >= 0 ? css('--good') : css('--bad'))}</div>
-    <p class="muted" style="font-size:12px;margin:0">La quota capitale non è una perdita: riduce il debito e aumenta il tuo patrimonio netto.</p></div>`;
+    <p class="muted" style="font-size:var(--fs-xs);margin:0">La quota capitale non è una perdita: riduce il debito e aumenta il tuo patrimonio netto.</p></div>`;
 }
 
 function renderPosizione(R, k, proj30, p, fine) {
@@ -332,20 +366,20 @@ function renderTabellaMensile(R) {
 }
 
 function renderAcquisto(k, reg) {
-  $('#kv-acquisto').innerHTML = data.acquisto.map((a) => `<dt>${esc(a.voce)}</dt><dd>${eur(a.importo)}</dd>`).join('')
+  $('#kv-acquisto').innerHTML = data.acquisto.map((a) => `<dt>${esc(maskText(a.voce))}</dt><dd>${eur(a.importo)}</dd>`).join('')
     + `<dt class="tot">Capitale proprio</dt><dd class="tot">${eur(k.cap)}</dd>`
     + `<dt class="muted">di cui costi di transazione (non recuperabili con la vendita)</dt><dd class="muted">${eur(k.trans)}</dd>`;
   const m = data.mutuo;
   const piano = [...reg.piano.values()];
   const interessiTot = piano.reduce((s, r) => s + r.interessi, 0);
   const pagate = piano.filter((r, i) => monthDiff([...reg.piano.keys()][i], fineAnalisi()) >= 0).length;
-  $('#mutuo-sub').textContent = `${m.banca} n. ${m.numero}`;
+  $('#mutuo-sub').textContent = maskText(`${m.banca} n. ${m.numero}`);
   $('#kv-mutuo').innerHTML = [
     ['Importo', eur(m.importo)], ['TAN fisso / TAEG', `${pct(m.tan, 2)} / ${pct(m.taeg, 2)}`], ['Durata', `${m.anni} anni · ${m.anni * 12} rate`],
     ['Rata (capitale + interessi)', eur(m.rata, 2)], ['Spese incasso rata', eur(m.spese_incasso, 2)], ['Addebito mensile', eur(m.rata + m.spese_incasso, 2)],
     ['Prima rata', `${new Date(m.prima_rata).toLocaleDateString('it-IT')} · ${eur(m.rata + m.spese_incasso + m.preammortamento, 2)}`],
     ['Rate pagate', `${pagate} / ${m.anni * 12}`], ['Debito residuo', eur(k.debito)], ['Interessi totali (30 anni)', eur(interessiTot)],
-  ].map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('') + (m.note ? `<dt class="muted" style="grid-column:1/-1;font-size:12px">${esc(m.note)}</dt>` : '');
+  ].map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('') + (m.note ? `<dt class="fine-row">${esc(maskText(m.note))}</dt>` : '');
 }
 
 // ---------- REGISTRO ----------
@@ -363,7 +397,7 @@ function renderRegistro() {
       <td>${esc(x.fonte || 'manuale')}${x.dettaglio?.length ? ` · ${x.dettaglio.length} pren.` : ''}</td>
       <td>${allegatiLinks(x.allegati)}</td>
       <td style="white-space:nowrap"><button class="btn small ghost" data-edit-inc="${x.mese}">Modifica</button><button class="btn small ghost danger" data-del-inc="${x.mese}">Elimina</button></td></tr>`
-      + (x.nota ? `<tr><td></td><td colspan="11" class="muted" style="font-size:12px;border-top:0">${esc(x.nota)}</td></tr>` : '');
+      + (x.nota ? `<tr><td></td><td colspan="11" class="muted" style="font-size:var(--fs-xs);border-top:0">${esc(x.nota)}</td></tr>` : '');
   }).join('')}</tbody>` : '<tbody><tr><td class="empty">Nessun incasso registrato.</td></tr></tbody>';
   $$('[data-edit-inc]').forEach((b) => b.onclick = () => fillIncasso(data.incassi.find((x) => x.mese === b.dataset.editInc)));
   $$('[data-del-inc]').forEach((b) => b.onclick = async () => {
@@ -539,7 +573,7 @@ function previewXlsx(rows, file) {
   for (const b of book) { const m = (ui.attr === 'check_out' ? b.check_out : b.check_in).slice(0, 7); (groups[m] ??= []).push(b); }
   const mesi = Object.keys(groups).sort().reverse();
   const inizio = data.immobile.inizio_gestione;
-  $('#xlsx-preview').innerHTML = `<p class="ink2" style="font-size:13px;margin:12px 0 6px">${book.length} prenotazioni lette da <strong>${esc(file.name)}</strong>. Seleziona i mesi da importare (quelli precedenti alla gestione sono esclusi).</p>
+  $('#xlsx-preview').innerHTML = `<p class="ink2" style="font-size:var(--fs-sm);margin:14px 0 8px">${book.length} prenotazioni lette da <strong>${esc(file.name)}</strong>. Seleziona i mesi da importare (quelli precedenti alla gestione sono esclusi).</p>
   <div class="table-wrap"><table><thead><tr><th></th><th>Mese</th><th class="n">Pren.</th><th class="n">Notti</th><th class="n">Lordo</th><th class="n">Portali</th><th class="n">Fee PM</th><th class="n">Netto</th><th></th></tr></thead><tbody>
   ${mesi.map((m) => {
     const g = groups[m]; const L = g.reduce((s, b) => s + b.lordo, 0); const C = g.reduce((s, b) => s + b.commissioni, 0); const F = feePM(data, L, C);
@@ -613,7 +647,7 @@ function renderSimulatore() {
       <input type="number" min="${min}" max="${max}" step="${step}" value="${v}" data-k="${key}" ${isPct ? 'data-pct' : ''} aria-label="${label}"></div>`;
   }).join('') + `
     <label class="f">Base cedolare<select id="sim-cedbase"><option value="lordo">lordo pagato dall'ospite</option><option value="netto_portali">netto commissioni portali</option></select></label>
-    <details class="box"><summary>Dettaglio costi fissi dal budget</summary><dl class="kv" style="font-size:13px">${data.budget.map((b) => `<dt>${esc(b.voce)}${b.certo ? '' : ' <span class="badge">stima</span>'}</dt><dd>${eur(b.annuo)}</dd>`).join('')}<dt class="tot">Totale</dt><dd class="tot">${eur(costiAnnuiBudget())}</dd></dl>
+    <details class="box"><summary>Dettaglio costi fissi dal budget</summary><dl class="kv" style="font-size:var(--fs-sm)">${data.budget.map((b) => `<dt>${esc(b.voce)}${b.certo ? '' : ' <span class="badge">stima</span>'}</dt><dd>${eur(b.annuo)}</dd>`).join('')}<dt class="tot">Totale</dt><dd class="tot">${eur(costiAnnuiBudget())}</dd></dl>
       <button class="btn small" type="button" id="sim-costi-reset" style="margin-top:8px">Usa il totale del budget</button></details>
     <div class="actions"><button class="btn primary" id="sim-save" type="button">Usa questo scenario in Panoramica</button><button class="btn ghost" id="sim-reset" type="button">Ripristina</button></div>`;
   $('#sim-cedbase').value = s.cedBase;
@@ -708,6 +742,7 @@ function renderMercato() {
   $('#mk-kpi').innerHTML = tiles.map(([l, v, s]) => `<div class="card tile"><div class="t-label">${l}</div><div class="t-value">${v}</div><div class="t-sub">${s}</div></div>`).join('');
   const s1 = css('--s1');
   const opt = baseOptions({ plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { label: (c) => ` ${nf0.format(c.raw)} €/m²` } } } });
+  opt.scales.y.ticks.display = true; // dati di mercato pubblici: sempre visibili
   chart('c-mk-anni', { type: 'line', data: { labels: an.map((x) => x[0]), datasets: [{ label: '€/m²', data: an.map((x) => x[1]), borderColor: s1, backgroundColor: s1, borderWidth: 2, pointRadius: 3, tension: 0.2 }] }, options: opt });
   chart('c-mk-mesi', { type: 'line', data: { labels: mens.map((x) => monthLabel(x[0])), datasets: [{ label: '€/m²', data: mens.map((x) => x[1]), borderColor: s1, backgroundColor: s1, borderWidth: 2, pointRadius: 3, tension: 0.2 }] },
     options: { ...opt, scales: { ...opt.scales, y: { ...opt.scales.y, beginAtZero: false } } } });
@@ -782,7 +817,7 @@ function renderSettings() {
     ${b.map((x, i) => `<tr><td><input name="b_voce_${i}" value="${esc(x.voce)}"></td><td>${esc(CATEGORIE[x.categoria] || x.categoria)}</td><td><input type="number" step="0.01" name="b_annuo_${i}" value="${x.annuo}" style="width:110px;text-align:right"></td>
       <td><input type="checkbox" name="b_certo_${i}" ${x.certo ? 'checked' : ''} aria-label="certo"></td><td><input type="month" name="b_dal_${i}" value="${x.dal || ''}" style="width:150px"></td></tr>`).join('')}
     </tbody></table></div>
-    <p class="muted" style="font-size:12px;margin-top:8px">"Certo" = costo fisso conosciuto (polizza, internet): conteggiato sempre. Non certo = stima: si può escludere con "Includi costi stimati". In entrambi i casi, quando registri una bolletta reale per quella categoria, nei mesi coperti vale la bolletta.</p>
+    <p class="fine">"Certo" = costo fisso conosciuto (polizza, internet): conteggiato sempre. Non certo = stima: si può escludere con "Includi costi stimati". In entrambi i casi, quando registri una bolletta reale per quella categoria, nei mesi coperti vale la bolletta.</p>
     <div class="note" style="margin-top:10px">${esc(data.pm.note)}<br>${esc(data.fiscale.note)}</div>`;
   const fp = $('#f-param'); fp.pm_base.value = data.pm.base; fp.ced_base.value = data.fiscale.base;
 }
