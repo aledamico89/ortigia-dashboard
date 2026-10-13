@@ -1,8 +1,8 @@
 import {
   CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js?v=20261013d';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261013d';
+} from './finance.js?v=20261013e';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261013e';
 
 // ---------- Stato ----------
 let data = null;
@@ -792,7 +792,38 @@ $('#f-src').addEventListener('submit', async (e) => {
   const cfg = { mode: settingsMode, owner: f.owner.value.trim(), repo: f.repo.value.trim(), branch: f.branch.value.trim() || 'main', path: f.path.value.trim() || 'ledger.json',
     token: (() => { const v = f.token.value.trim(); if (!v) return old.token; const m = v.match(/(github_pat_\w+|gh[pousr]_\w+)/); return m ? m[1] : v; })() };
   if (cfg.mode === 'github' && (!cfg.owner || !cfg.repo || !cfg.token)) return toast('Compila utente, repository e token', true);
-  setConfig(cfg); location.reload();
+  if (cfg.mode === 'github') {
+    const out = $('#src-check');
+    const line = (ok, txt) => `<div>${ok ? '✅' : '❌'} ${txt}</div>`;
+    out.className = 'note'; out.innerHTML = 'Verifica del token in corso…';
+    const tk = cfg.token;
+    const desc = `token ${f.token.value.trim() ? 'incollato ora' : 'già salvato'}: inizia con "${esc(tk.slice(0, 11))}", finisce con "…${esc(tk.slice(-4))}", ${tk.length} caratteri`;
+    const h = { Authorization: `Bearer ${tk}`, Accept: 'application/vnd.github+json' };
+    try {
+      const u = await fetch('https://api.github.com/user', { headers: h });
+      if (!u.ok) {
+        out.className = 'note bad';
+        out.innerHTML = line(false, `GitHub non riconosce il token (${desc}).`)
+          + '<div style="margin-top:6px">Un token fine-grained è lungo circa 93 caratteri e inizia con <code>github_pat_</code>. Se hai premuto "Regenerate", il codice valido è solo l\'ultimo generato: rigeneralo una volta, copialo per intero e incollalo qui.</div>';
+        return;
+      }
+      const login = (await u.json()).login;
+      const r = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}`, { headers: h });
+      if (!r.ok) {
+        out.className = 'note bad';
+        out.innerHTML = line(true, `Token valido (utente ${esc(login)})`) + line(false, `Il token non ha accesso a ${esc(cfg.owner)}/${esc(cfg.repo)}: in GitHub → token → Edit → Repository access seleziona ortigia-data e premi Update.`);
+        return;
+      }
+      const c = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}?ref=${cfg.branch}`, { headers: h });
+      if (!c.ok) {
+        out.className = 'note bad';
+        out.innerHTML = line(true, `Token valido (utente ${esc(login)})`) + line(true, 'Repository accessibile') + line(false, `File ${esc(cfg.path)} non leggibile: imposta Contents su "Read and write" nel token.`);
+        return;
+      }
+      out.className = 'note'; out.innerHTML = line(true, `Token valido (utente ${esc(login)})`) + line(true, 'Repository accessibile') + line(true, 'Dati trovati, ricarico…');
+    } catch (err) { out.className = 'note bad'; out.textContent = `Errore di rete: ${err.message}`; return; }
+  }
+  setConfig(cfg); setTimeout(() => location.reload(), 600);
 });
 $('#f-param').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = e.target;
