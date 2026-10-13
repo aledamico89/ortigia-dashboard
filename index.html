@@ -6,10 +6,10 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Ortigia Investimento</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M8 16 16 9l8 7v8h-5v-5h-6v5H8z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css?v=20261013f">
+  <link rel="stylesheet" href="css/style.css?v=20261014b">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-  <script type="module" src="js/app.js?v=20261013f"></script>
+  <script type="module" src="js/app.js?v=20261014b"></script>
 </head>
 <body>
 <header class="top">
@@ -59,18 +59,18 @@
 
     <div class="card hero">
       <div>
-        <div class="label">Cash flow netto cumulato <span class="muted">· dopo PM, portali, tasse, costi e rata mutuo</span></div>
+        <div class="label">Cash flow netto cumulato <span class="muted">· dopo PM, portali, tasse, costi e rata mutuo</span> <button type="button" class="info" data-info="cf" data-ctx="panoramica" aria-label="Spiegazione: Cash flow netto cumulato" aria-expanded="false" aria-controls="info-pop">?</button></div>
         <div class="value" id="h-cf">—</div>
         <div class="meta" id="h-meta">—</div>
       </div>
       <div>
         <div class="meter">
-          <div class="meter-row"><span>Breakeven di cassa</span><span id="m1-txt">—</span></div>
+          <div class="meter-row"><span>Breakeven di cassa <button type="button" class="info" data-info="bkCassa" data-ctx="panoramica" aria-label="Spiegazione: Breakeven di cassa" aria-expanded="false" aria-controls="info-pop">?</button></span><span id="m1-txt">—</span></div>
           <div class="meter-track"><div class="meter-fill" id="m1"></div></div>
           <div class="meter-row" style="margin-top:4px"><small id="m1-sub"></small></div>
         </div>
         <div class="meter">
-          <div class="meter-row"><span>Breakeven patrimoniale</span><span id="m2-txt">—</span></div>
+          <div class="meter-row"><span>Breakeven patrimoniale <button type="button" class="info" data-info="bkPatr" data-ctx="panoramica" aria-label="Spiegazione: Breakeven patrimoniale" aria-expanded="false" aria-controls="info-pop">?</button></span><span id="m2-txt">—</span></div>
           <div class="meter-track"><div class="meter-fill" id="m2"></div></div>
           <div class="meter-row" style="margin-top:4px"><small id="m2-sub"></small></div>
         </div>
@@ -86,13 +86,13 @@
         <div class="chart"><canvas id="c-ricavi" aria-label="Grafico ricavi lordi mensili"></canvas></div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>Dove va ogni euro incassato</h2><span class="sub" id="split-sub">periodo di gestione</span></div>
+        <div class="card-head"><h2>Dove va ogni euro incassato</h2><button type="button" class="info" data-info="split" data-ctx="panoramica" aria-label="Spiegazione: Dove va ogni euro incassato" aria-expanded="false" aria-controls="info-pop">?</button><span class="sub" id="split-sub">periodo di gestione</span></div>
         <div id="split"></div>
       </div>
     </div>
 
     <div class="card mt">
-      <div class="card-head"><h2>Posizione netta nel tempo</h2><span class="sub">reale + proiezione dello scenario del simulatore</span>
+      <div class="card-head"><h2>Posizione netta nel tempo</h2><button type="button" class="info" data-info="posizione" data-ctx="panoramica" aria-label="Spiegazione: Posizione netta nel tempo" aria-expanded="false" aria-controls="info-pop">?</button><span class="sub">reale + proiezione dello scenario del simulatore</span>
         <div class="right"><span class="badge" id="proj-badge">—</span></div></div>
       <div class="chart tall"><canvas id="c-posizione" aria-label="Grafico posizione netta"></canvas></div>
       <div class="legend" id="pos-legend"></div>

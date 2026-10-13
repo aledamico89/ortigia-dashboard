@@ -1,8 +1,9 @@
 import {
   CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js?v=20261013f';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261013f';
+} from './finance.js?v=20261014b';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261014b';
+import { createInfo } from './info.js?v=20261014b';
 
 // ---------- Stato ----------
 let data = null;
@@ -28,10 +29,13 @@ const eur = (x, d = 0) => (ui.privacy && x != null && !Number.isNaN(x) ? MASK : 
 const maskText = (t) => (ui.privacy ? String(t ?? '').replace(/(?<![/\d])\d{1,3}(?:\.\d{3})+(?:,\d+)?|(?<![/\d.,])\d{3,}(?:,\d{2})?(?![/\d])|\d+,\d{2}/g, '••••') : String(t ?? ''));
 const eurS = (x, d = 0) => (x > 0.004 ? '+' : x < -0.004 ? '−' : '') + eur(Math.abs(x), d);
 const pct = (x, d = 1) => (x == null || !Number.isFinite(x) ? '—' : `${new Intl.NumberFormat('it-IT', { minimumFractionDigits: d, maximumFractionDigits: d }).format(x * 100)}%`);
+let info = null; // spiegazioni "?" (inizializzate dopo la definizione dei formattatori)
 const cls = (x) => (x > 0.004 ? 'pos' : x < -0.004 ? 'neg' : '');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => new Date().toISOString().slice(0, 10);
 const currentMonth = () => monthKey(new Date());
+
+info = createInfo({ eur, eurS, pct, nf0, esc, monthLabel });
 
 function toast(msg, err = false) {
   const t = $('#toast'); t.textContent = msg; t.className = err ? 'show err' : 'show';
@@ -240,27 +244,28 @@ function renderPanoramica() {
   // KPI
   const ann = k.mesi < 12 ? `annualizzato su ${k.mesi} ${k.mesi === 1 ? 'mese' : 'mesi'}` : 'annualizzato';
   const tiles = [
-    ['Rendimento netto su prezzo', pct(k.rendNetto), `${ann} · reddito netto dopo tasse ÷ ${eur(data.immobile.prezzo)}`, cls(k.rendNetto), 'Reddito operativo dopo PM, portali, cedolare e costi, prima della rata del mutuo, diviso il prezzo di acquisto.'],
-    ['Cash-on-cash', pct(k.cashOnCash), `${ann} · cash flow ÷ capitale proprio`, cls(k.cashOnCash), 'Cash flow netto (dopo la rata) annualizzato, diviso i soldi usciti di tasca tua.'],
-    ['ROI totale', pct(k.roiTot), `annualizzato ${pct(k.roiTotAnn)} · include capitale rimborsato${ui.valore !== 'nominale' ? ' e rivalutazione' : ''}`, cls(k.roiTot), '(Cash flow cumulato + quota capitale del mutuo rimborsata + rivalutazione) ÷ capitale proprio.'],
+    ['Rendimento netto su prezzo', pct(k.rendNetto), `${ann} · reddito netto dopo tasse ÷ ${eur(data.immobile.prezzo)}`, cls(k.rendNetto), 'rendNetto'],
+    ['Cash-on-cash', pct(k.cashOnCash), `${ann} · cash flow ÷ capitale proprio`, cls(k.cashOnCash), 'coc'],
+    ['ROI totale', pct(k.roiTot), `annualizzato ${pct(k.roiTotAnn)} · include capitale rimborsato${ui.valore !== 'nominale' ? ' e rivalutazione' : ''}`, cls(k.roiTot), 'roi'],
   ];
   const giorni = R.reduce((s, r) => { const [y, m] = r.mese.split('-').map(Number); return s + new Date(y, m, 0).getDate(); }, 0) || 1;
   const L = k.lordo || 1;
   // In modalità privacy le card con importi assoluti diventano indicatori percentuali
   tiles.push(...(ui.privacy ? [
-    ['Occupazione', pct(k.notti / giorni, 0), `${nf0.format(k.notti)} notti su ${giorni} giorni`, '', 'Notti vendute diviso giorni del periodo.'],
-    ['Mutuo rimborsato', pct(k.capRimb / data.mutuo.importo), 'quota capitale restituita', '', 'Percentuale del mutuo già rimborsata.'],
-    ['Loan to value', pct(k.ltv, 0), 'debito ÷ valore immobile', '', 'Quota dell\'immobile ancora finanziata dalla banca.'],
-    ['Tasse sul lordo', pct(k.ced / L), 'cedolare maturata ÷ lordo', '', 'Peso della cedolare secca sugli incassi.'],
-    ['Costi sul lordo', pct(k.costi / L), k.costiStimati ? `di cui stime ${pct(k.costiStimati / L)}` : 'tutti da spese reali', '', 'Utenze, polizza, TARI, IMU e manutenzione in rapporto agli incassi.'],
+    ['Occupazione', pct(k.notti / giorni, 0), `${nf0.format(k.notti)} notti su ${giorni} giorni`, '', 'occupazione'],
+    ['Mutuo rimborsato', pct(k.capRimb / data.mutuo.importo), 'quota capitale restituita', '', 'mutuoPct'],
+    ['Loan to value', pct(k.ltv, 0), 'debito ÷ valore immobile', '', 'ltv'],
+    ['Tasse sul lordo', pct(k.ced / L), 'cedolare maturata ÷ lordo', '', 'tassePct'],
+    ['Costi sul lordo', pct(k.costi / L), k.costiStimati ? `di cui stime ${pct(k.costiStimati / L)}` : 'tutti da spese reali', '', 'costiPct'],
   ] : [
-    ['Lordo incassato', eur(k.lordo), `${nf0.format(k.notti)} notti · ADR ${k.notti ? eur(k.lordo / k.notti) : '—'}`, '', 'Somma pagata dagli ospiti, esclusa la tassa di soggiorno.'],
-    ['Debito residuo', eur(k.debito), `capitale rimborsato ${eur(k.capRimb)}`, '', 'Debito residuo del mutuo dopo l\'ultima rata del periodo.'],
-    ['Patrimonio netto immobiliare', eur(k.equity), `LTV ${pct(k.ltv, 0)} · valore ${eur(k.valore)}`, '', 'Valore dell\'immobile (secondo la modalità scelta) meno il debito residuo.'],
-    ['Cedolare da accantonare', eur(k.tasseDaAccantonare), `maturata ${eur(k.ced)} · trattenuta ${eur(k.ritenute)}`, '', 'Cedolare secca maturata meno le ritenute già trattenute dagli intermediari e gli F24 registrati.'],
-    ['Costi operativi', eur(k.costi), k.costiStimati ? `di cui stimati ${eur(k.costiStimati)}` : 'tutti da spese reali', '', 'Utenze, polizza, TARI, IMU, manutenzione: reali dove ci sono bollette, altrimenti quota di budget.'],
+    ['Lordo incassato', eur(k.lordo), `${nf0.format(k.notti)} notti · ADR ${k.notti ? eur(k.lordo / k.notti) : '—'}`, '', 'lordo'],
+    ['Debito residuo', eur(k.debito), `capitale rimborsato ${eur(k.capRimb)}`, '', 'debito'],
+    ['Patrimonio netto immobiliare', eur(k.equity), `LTV ${pct(k.ltv, 0)} · valore ${eur(k.valore)}`, '', 'equity'],
+    ['Cedolare da accantonare', eur(k.tasseDaAccantonare), `maturata ${eur(k.ced)} · trattenuta ${eur(k.ritenute)}`, '', 'cedolare'],
+    ['Costi operativi', eur(k.costi), k.costiStimati ? `di cui stimati ${eur(k.costiStimati)}` : 'tutti da spese reali', '', 'costi'],
   ]));
-  $('#kpi-grid').innerHTML = tiles.map(([l, v, s, c, info]) => `<div class="card tile"><div class="t-label">${esc(l)} <span class="info" title="${esc(info)}" tabindex="0" aria-label="${esc(info)}">i</span></div><div class="t-value ${c}">${v}</div><div class="t-sub">${s}</div></div>`).join('');
+  info.setCtx('panoramica', { k, R, data, p, scenLabel, etaCassa, etaPatr, giorni });
+  $('#kpi-grid').innerHTML = tiles.map(([l, v, s, c, key]) => `<div class="card tile"><div class="t-label"><span>${esc(l)}</span>${info.btn(key, l)}</div><div class="t-value ${c}">${v}</div><div class="t-sub">${s}</div></div>`).join('');
 
   renderRicaviChart(R);
   renderSplit(k);
@@ -685,13 +690,14 @@ function updateSim() {
   const Lbe = (p.costiAnnui + servizio) / kf;
   const when = (m) => (m ? `${monthLabel(m, true)} · ${Math.ceil((monthDiff(data.immobile.inizio_gestione, m) + 1) / 12)}° anno` : 'oltre 30 anni');
   const tiles = [
-    ['Cash flow medio mensile (anno 1)', eurS(cfY1 / 12), `annuo ${eurS(cfY1)}`, cls(cfY1)],
-    ['Rendimento netto su prezzo', pct(noiY1 / data.immobile.prezzo), `cash-on-cash ${pct(cfY1 / cap)}`, cls(noiY1)],
-    ['Breakeven di cassa', bc ? monthLabel(bc, true) : 'oltre 30 anni', bc ? when(bc) : 'il CF cumulato non recupera il capitale', ''],
-    ['Breakeven patrimoniale', bp ? monthLabel(bp, true) : 'oltre 30 anni', bp ? when(bp) : 'con questi parametri', ''],
+    ['Cash flow medio mensile (anno 1)', eurS(cfY1 / 12), `annuo ${eurS(cfY1)}`, cls(cfY1), 'simCf'],
+    ['Rendimento netto su prezzo', pct(noiY1 / data.immobile.prezzo), `cash-on-cash ${pct(cfY1 / cap)}`, cls(noiY1), 'simRend'],
+    ['Breakeven di cassa', bc ? monthLabel(bc, true) : 'oltre 30 anni', bc ? when(bc) : 'il CF cumulato non recupera il capitale', '', 'simBc'],
+    ['Breakeven patrimoniale', bp ? monthLabel(bp, true) : 'oltre 30 anni', bp ? when(bp) : 'con questi parametri', '', 'simBp'],
   ];
-  $('#sim-kpi').innerHTML = tiles.map(([l, v, s2, c]) => `<div class="card tile"><div class="t-label">${l}</div><div class="t-value ${c}">${v}</div><div class="t-sub">${s2}</div></div>`).join('')
-    + `<div class="card tile" style="grid-column:1/-1"><div class="t-label">Lordo annuo per avere cash flow zero</div><div class="t-value">${eur(Lbe)}</div>
+  info.setCtx('sim', { p, cfY1, noiY1, cap, Lbe, lordoY1, servizio, data });
+  $('#sim-kpi').innerHTML = tiles.map(([l, v, s2, c, key]) => `<div class="card tile"><div class="t-label"><span>${l}</span>${info.btn(key, l, 'sim')}</div><div class="t-value ${c}">${v}</div><div class="t-sub">${s2}</div></div>`).join('')
+    + `<div class="card tile" style="grid-column:1/-1"><div class="t-label"><span>Lordo annuo per avere cash flow zero</span>${info.btn('simBe', 'Lordo annuo per avere cash flow zero', 'sim')}</div><div class="t-value">${eur(Lbe)}</div>
        <div class="t-sub">≈ ${nf0.format(Lbe / p.adr)} notti a ${eur(p.adr)} · scenario attuale: ${eur(lordoY1)} lordi (${lordoY1 >= Lbe ? '<span class="pos">sopra</span>' : '<span class="neg">sotto</span>'} la soglia di ${eur(Math.abs(lordoY1 - Lbe))})</div></div>`;
 
   // Confronti con storico
