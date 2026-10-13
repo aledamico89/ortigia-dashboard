@@ -1,9 +1,9 @@
 import {
   CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js?v=20261014b';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261014b';
-import { createInfo } from './info.js?v=20261014b';
+} from './finance.js?v=20261014c';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261014c';
+import { createInfo } from './info.js?v=20261014c';
 
 // ---------- Stato ----------
 let data = null;
@@ -86,7 +86,7 @@ async function boot() {
     return;
   }
   migrate();
-  setStatus('ok', store.label());
+  setStatus(store.offline ? 'busy' : 'ok', store.label());
   if (!ui.sim) ui.sim = data.simulatore?.params || defaultSim();
   renderAll();
   showView(ui.view);
@@ -894,6 +894,25 @@ $('#imp-json').addEventListener('change', async (e) => {
     location.reload();
   } catch (err) { toast(err.message, true); }
 });
+
+// Aggiorna i dati (nell'app installata non c'è il pulsante ricarica del browser)
+$('#refresh-btn').addEventListener('click', async () => {
+  const b = $('#refresh-btn'); b.disabled = true; b.style.opacity = '.5';
+  setStatus('busy', 'Aggiornamento…');
+  try {
+    const fresh = await store.load();
+    if (fresh) { data = fresh; migrate(); }
+    setStatus(store.offline ? 'busy' : 'ok', store.label());
+    if (data) { renderAll(); requestAnimationFrame(() => ({ panoramica: renderPanoramica, simulatore: updateSim, mercato: renderMercato }[ui.view]?.())); }
+    toast(store.offline ? 'Sei offline: mostro gli ultimi dati scaricati' : 'Dati aggiornati');
+  } catch (e) { setStatus('err', 'Errore'); toast(e.message, true); }
+  b.disabled = false; b.style.opacity = '';
+});
+
+// App installabile (PWA): registra il service worker solo su https
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('./sw.js').catch(() => { /* non bloccante */ });
+}
 
 // Avvio quando Chart.js è pronto (script defer)
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

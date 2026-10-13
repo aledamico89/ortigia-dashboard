@@ -4,6 +4,10 @@
 const CFG_KEY = 'ortigia.cfg.v1';
 const LOCAL_KEY = 'ortigia.ledger.v1';
 const LOCAL_FILES = 'ortigia.files.v1';
+const CACHE_KEY = 'ortigia.cache.v1'; // ultima copia dei dati GitHub, per la consultazione offline
+
+function readCache() { try { return JSON.parse(localStorage.getItem(CACHE_KEY)); } catch { return null; } }
+function writeCache(data) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), data })); } catch { /* spazio pieno: pazienza */ } }
 
 function safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function safeSet(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } }
@@ -35,18 +39,29 @@ class GitHubStore {
   }
   url(path) { return this.base + path.split('/').map(encodeURIComponent).join('/') + `?ref=${encodeURIComponent(this.cfg.branch || 'main')}`; }
   async load() {
-    const res = await fetch(this.url(this.cfg.path || 'ledger.json'), { headers: this.headers(), cache: 'no-store' });
+    let res;
+    try {
+      res = await fetch(this.url(this.cfg.path || 'ledger.json'), { headers: this.headers(), cache: 'no-store' });
+    } catch (e) {
+      // offline: uso l'ultima copia scaricata su questo dispositivo (sola lettura)
+      const c = readCache();
+      if (c) { this.offline = c.at; return c.data; }
+      throw new Error('Sei offline e su questo dispositivo non ci sono ancora dati salvati.');
+    }
+    this.offline = null;
     if (res.status === 401) throw new Error('Token non valido o scaduto.');
     if (res.status === 404) throw new Error(await this.diagnose());
     if (!res.ok) throw new Error(`GitHub ${res.status}`);
     const j = await res.json();
     this.sha = j.sha;
     // file > 1MB: content vuoto, usare il blob raw
+    let data;
     if (!j.content && j.download_url) {
       const raw = await fetch(j.git_url, { headers: { ...this.headers(), Accept: 'application/vnd.github.raw' } });
-      return JSON.parse(await raw.text());
-    }
-    return JSON.parse(b64ToUtf8(j.content));
+      data = JSON.parse(await raw.text());
+    } else data = JSON.parse(b64ToUtf8(j.content));
+    writeCache(data);
+    return data;
   }
   // Un 404 può voler dire: token di un altro utente, token senza accesso al repo, nome repo/branch/file errato.
   async diagnose() {
@@ -64,6 +79,7 @@ class GitHubStore {
     return `Il repository è accessibile, ma il file "${path}" non esiste oppure il token non ha il permesso "Contents: Read" (impostalo su Read and write).`;
   }
   async save(data, message) {
+    if (this.offline) throw new Error('Sei offline: puoi consultare i dati ma non modificarli. Riprova quando torni online.');
     const body = { message: message || 'Aggiornamento dati', content: utf8ToB64(JSON.stringify(data, null, 1)), branch: this.cfg.branch || 'main' };
     if (this.sha) body.sha = this.sha;
     const res = await fetch(this.base + (this.cfg.path || 'ledger.json'), { method: 'PUT', headers: this.headers(), body: JSON.stringify(body) });
@@ -71,6 +87,7 @@ class GitHubStore {
     if (!res.ok) throw new Error(`Salvataggio non riuscito (GitHub ${res.status}).`);
     const j = await res.json();
     this.sha = j.content.sha;
+    writeCache(data);
   }
   async upload(path, file) {
     const content = bufToB64(await file.arrayBuffer());
@@ -86,7 +103,7 @@ class GitHubStore {
     if (!res.ok) throw new Error(`Allegato non disponibile (GitHub ${res.status}).`);
     return URL.createObjectURL(await res.blob());
   }
-  label() { return `GitHub · ${this.cfg.owner}/${this.cfg.repo}`; }
+  label() { return this.offline ? `Offline · dati del ${new Date(this.offline).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : `GitHub · ${this.cfg.owner}/${this.cfg.repo}`; }
 }
 
 class LocalStore {
