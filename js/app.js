@@ -1,8 +1,8 @@
 import {
   CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js';
-import { getConfig, setConfig, makeStore } from './store.js';
+} from './finance.js?v=20261013c';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261013c';
 
 // ---------- Stato ----------
 let data = null;
