@@ -1,8 +1,8 @@
 import {
   CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js?v=20261013c';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261013c';
+} from './finance.js?v=20261013d';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261013d';
 
 // ---------- Stato ----------
 let data = null;
@@ -760,7 +760,8 @@ function renderSettings() {
   const f = $('#f-src');
   const defaults = { owner: onPages ? location.hostname.split('.')[0] : '', repo: 'ortigia-data', branch: 'main', path: 'ledger.json' };
   ['owner', 'repo', 'branch', 'path'].forEach((k) => { f[k].value = cfg[k] || defaults[k]; });
-  f.token.value = cfg.token ? '••••••••' : '';
+  f.token.value = '';
+  f.token.placeholder = cfg.token ? `token salvato (…${cfg.token.slice(-4)}) · lascia vuoto per mantenerlo` : 'github_pat_…';
   const upd = () => { seg($('#seg-mode'), settingsMode, (v) => { settingsMode = v; upd(); }); $('#gh-fields').style.display = settingsMode === 'github' ? '' : 'none'; };
   upd();
   if (!data) { $('#f-param').style.display = 'none'; return; }
@@ -789,7 +790,7 @@ $('#f-src').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target; const old = getConfig();
   const cfg = { mode: settingsMode, owner: f.owner.value.trim(), repo: f.repo.value.trim(), branch: f.branch.value.trim() || 'main', path: f.path.value.trim() || 'ledger.json',
-    token: f.token.value.startsWith('••') ? old.token : f.token.value.trim() };
+    token: (() => { const v = f.token.value.trim(); if (!v) return old.token; const m = v.match(/(github_pat_\w+|gh[pousr]_\w+)/); return m ? m[1] : v; })() };
   if (cfg.mode === 'github' && (!cfg.owner || !cfg.repo || !cfg.token)) return toast('Compila utente, repository e token', true);
   setConfig(cfg); location.reload();
 });
