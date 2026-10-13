@@ -37,7 +37,7 @@ class GitHubStore {
   async load() {
     const res = await fetch(this.url(this.cfg.path || 'ledger.json'), { headers: this.headers(), cache: 'no-store' });
     if (res.status === 401) throw new Error('Token non valido o scaduto.');
-    if (res.status === 404) throw new Error('File non trovato: controlla owner, repository, branch e percorso (e che il token abbia accesso al repo).');
+    if (res.status === 404) throw new Error(await this.diagnose());
     if (!res.ok) throw new Error(`GitHub ${res.status}`);
     const j = await res.json();
     this.sha = j.sha;
@@ -47,6 +47,21 @@ class GitHubStore {
       return JSON.parse(await raw.text());
     }
     return JSON.parse(b64ToUtf8(j.content));
+  }
+  // Un 404 può voler dire: token di un altro utente, token senza accesso al repo, nome repo/branch/file errato.
+  async diagnose() {
+    const { owner, repo, branch = 'main', path = 'ledger.json' } = this.cfg;
+    const u = await fetch('https://api.github.com/user', { headers: this.headers() });
+    if (!u.ok) return 'Token non valido: ricrealo e incollalo di nuovo.';
+    const login = (await u.json()).login;
+    const r = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: this.headers() });
+    if (r.status === 404) {
+      return `Il token (utente ${login}) non vede il repository "${owner}/${repo}". Controlla che utente e repository siano scritti esattamente così `
+        + 'e che nel token, alla voce "Repository access", sia selezionato ortigia-data (Only select repositories).';
+    }
+    const b = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`, { headers: this.headers() });
+    if (b.status === 404) return `Il repository c'è, ma non il branch "${branch}".`;
+    return `Il repository è accessibile, ma il file "${path}" non esiste oppure il token non ha il permesso "Contents: Read" (impostalo su Read and write).`;
   }
   async save(data, message) {
     const body = { message: message || 'Aggiornamento dati', content: utf8ToB64(JSON.stringify(data, null, 1)), branch: this.cfg.branch || 'main' };
