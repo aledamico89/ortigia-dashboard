@@ -754,9 +754,11 @@ function downloadCSV(name, rows) {
 let settingsMode = null;
 function renderSettings() {
   const cfg = getConfig();
-  settingsMode ??= cfg.mode || 'local';
+  const onPages = location.hostname.endsWith('.github.io');
+  settingsMode ??= cfg.token ? cfg.mode : (onPages ? 'github' : (cfg.mode || 'local'));
   const f = $('#f-src');
-  ['owner', 'repo', 'branch', 'path'].forEach((k) => { if (cfg[k]) f[k].value = cfg[k]; });
+  const defaults = { owner: onPages ? location.hostname.split('.')[0] : '', repo: 'ortigia-data', branch: 'main', path: 'ledger.json' };
+  ['owner', 'repo', 'branch', 'path'].forEach((k) => { f[k].value = cfg[k] || defaults[k]; });
   f.token.value = cfg.token ? '••••••••' : '';
   const upd = () => { seg($('#seg-mode'), settingsMode, (v) => { settingsMode = v; upd(); }); $('#gh-fields').style.display = settingsMode === 'github' ? '' : 'none'; };
   upd();
