@@ -1,10 +1,10 @@
 import {
-  CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
+  confrontoBenchmark, CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js?v=20261104c';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261104c';
-import { createInfo } from './info.js?v=20261104c';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104c';
+} from './finance.js?v=20261104f';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261104f';
+import { createInfo } from './info.js?v=20261104f';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104f';
 
 // ---------- Stato ----------
 let data = null;
@@ -263,14 +263,41 @@ function renderPanoramica() {
     ['Cedolare da accantonare', eur(k.tasseDaAccantonare), `maturata ${eur(k.ced)} · trattenuta ${eur(k.ritenute)}`, '', 'cedolare'],
     ['Costi operativi', eur(k.costi), k.costiStimati ? `di cui stimati ${eur(k.costiStimati)}` : 'tutti da spese reali', '', 'costi'],
   ]));
-  info.setCtx('panoramica', { k, R, data, p, scenLabel, etaCassa, etaPatr, giorni });
+  const bench = confrontoBenchmark(data, R);
+  info.setCtx('panoramica', { k, R, data, p, scenLabel, etaCassa, etaPatr, giorni, bench });
   $('#kpi-grid').innerHTML = tiles.map(([l, v, s, c, key]) => `<div class="card tile"><div class="t-label"><span>${esc(l)}</span>${info.btn(key, l)}</div><div class="t-value ${c}">${v}</div><div class="t-sub">${s}</div></div>`).join('');
 
   renderRicaviChart(R);
+  renderBenchmark(bench);
   renderSplit(k);
   renderPosizione(R, k, proj30, p, fine);
   renderTabellaMensile(R);
   renderAcquisto(k, reg);
+}
+
+// Confronto dei tuoi mesi con gli stessi mesi della gestione precedente. Le percentuali restano visibili in modalità privacy.
+function renderBenchmark(c) {
+  const el = $('#bench-body');
+  if (!c.nMesi) { el.innerHTML = '<div class="empty">Appena registri il primo resoconto mensile confronto i tuoi risultati con gli stessi mesi del 2024 e del 2025.</div>'; return; }
+  const t = c.totale;
+  const pc = (d) => (d == null ? '—' : `${d > 0.0005 ? '+' : d < -0.0005 ? '−' : ''}${pct(Math.abs(d), 0)}`);
+  const cl = (d) => (d == null ? '' : d > 0.05 ? 'pos' : d < -0.05 ? 'neg' : '');
+  const badge = (v) => ({ sopra: '<span class="badge ok">sopra</span>', 'in linea': '<span class="badge">in linea</span>', sotto: '<span class="badge bad">sotto</span>' }[v] || '');
+  const nf1 = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 });
+  const cella = (a, b, d, f, l) => `<td class="n" data-l="${l}"><strong>${f(a)}</strong><small>benchmark ${f(b)} · <span class="${cl(d)}">${pc(d)}</span></small></td>`;
+  const mesi = c.nMesi === 1 ? '1 mese' : `${c.nMesi} mesi`;
+  const frase = `Su ${mesi} di gestione il tuo lordo è <span class="${cl(t.d.lordo)}">${pc(t.d.lordo)}</span> rispetto al benchmark (${t.verdetto}): `
+    + `notti <span class="${cl(t.d.notti)}">${pc(t.d.notti)}</span>, prezzo medio <span class="${cl(t.d.adr)}">${pc(t.d.adr)}</span>.`
+    + (c.nMesi < 3 ? ' Con così pochi mesi è solo un\'indicazione.' : '');
+  const righe = [...c.righe, { ...t, mese: null }];
+  el.innerHTML = `<p class="bench-sum">${frase}</p>
+    <div class="table-wrap"><table><thead><tr><th>Mese</th><th class="n">Notti</th><th class="n">Prezzo medio a notte</th><th class="n">Lordo</th><th>Esito</th></tr></thead><tbody>
+    ${righe.map((x) => `<tr class="${x.mese ? '' : 'total'}"><td>${x.mese ? monthLabel(x.mese, true) : (c.nMesi > 1 ? 'Totale' : '')}</td>
+      ${cella(x.own.notti, x.bench.notti, x.d.notti, (v) => nf1.format(v), 'Notti')}
+      ${cella(x.own.adr, x.bench.adr, x.d.adr, (v) => eur(v), 'Prezzo medio a notte')}
+      ${cella(x.own.lordo, x.bench.lordo, x.d.lordo, (v) => eur(v), 'Lordo')}<td data-l="Esito">${badge(x.verdetto)}</td></tr>`).filter((_, i, a) => c.nMesi > 1 || i < a.length - 1).join('')}
+    </tbody></table></div>
+    <p class="fine">Benchmark = media degli stessi mesi del ${[...new Set(c.righe.flatMap((x) => x.anni))].join(' e ')} (gestione precedente; per gennaio–giugno anche il 2026 reale). Il lordo 2024–2025 è stimato come notti × prezzo medio annuo; "in linea" = entro ±5%.</p>`;
 }
 
 function renderRicaviChart(R) {

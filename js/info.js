@@ -117,6 +117,18 @@ export function createInfo(fmt) {
       calc: ({ k }) => `Costi operativi ÷ lordo = <strong>${pct(k.lordo ? k.costi / k.lordo : 0)}</strong>.`,
       leggi: 'Nei mesi di bassa stagione sale molto, perché i costi restano mentre gli incassi calano.',
     },
+    bench: {
+      t: 'Rispetto al benchmark',
+      cosa: 'Confronta i mesi della tua gestione con gli stessi mesi degli anni precedenti (gestione del venditore), per capire se la casa rende più o meno di prima. Il benchmark non è un obiettivo: è un termine di paragone.',
+      calc: ({ bench }) => {
+        const t = bench?.totale; if (!t) return '';
+        const n1 = (x) => new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 }).format(x);
+        const d = (x) => (x == null ? '—' : `${x > 0 ? '+' : x < 0 ? '−' : ''}${pct(Math.abs(x), 0)}`);
+        return `Notti ${n1(t.own.notti)} contro ${n1(t.bench.notti)} (${d(t.d.notti)}). Prezzo medio ${eur(t.own.adr)} contro ${eur(t.bench.adr)} (${d(t.d.adr)}). Lordo ${eur(t.own.lordo)} contro ${eur(t.bench.lordo)}: <strong>${d(t.d.lordo)}, ${t.verdetto}</strong>. Il benchmark è la media degli stessi mesi del ${t.anni.join(' e ')}.`;
+      },
+      leggi: 'L\'esito guarda il lordo: oltre +5% sopra, sotto −5% sotto, in mezzo in linea. Il lordo è notti × prezzo medio, quindi puoi essere sopra con meno notti se vendi a prezzi più alti, e viceversa. Il lordo 2024–2025 è stimato (di quegli anni si ha solo il totale annuo), e le notti del resoconto sono contate per mese di partenza mentre quelle del benchmark per data: può esserci 1–2 notti di scarto.',
+      nota: ({ bench }) => (bench?.nMesi < 3 ? `Con ${bench.nMesi} ${bench.nMesi === 1 ? 'mese' : 'mesi'} il confronto è solo un\'indicazione: un singolo mese oscilla molto. Diventa solido con 12 mesi di gestione, quando si può confrontare l\'anno intero.` : ''),
+    },
     split: {
       t: 'Dove va ogni euro incassato',
       cosa: 'Come si divide il lordo pagato dagli ospiti tra chi lo riceve: portali, property manager, Stato, fornitori, banca e, alla fine, tu.',

@@ -14,10 +14,10 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Ortigia Investimento</title>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-  <link rel="stylesheet" href="css/style.css?v=20261104c">
+  <link rel="stylesheet" href="css/style.css?v=20261104f">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-  <script type="module" src="js/app.js?v=20261104c"></script>
+  <script type="module" src="js/app.js?v=20261104f"></script>
 </head>
 <body>
 <header class="top">
@@ -100,6 +100,11 @@
         <div class="card-head"><h2>Dove va ogni euro incassato</h2><button type="button" class="info" data-info="split" data-ctx="panoramica" aria-label="Spiegazione: Dove va ogni euro incassato" aria-expanded="false" aria-controls="info-pop">?</button><span class="sub" id="split-sub">periodo di gestione</span></div>
         <div id="split"></div>
       </div>
+    </div>
+
+    <div class="card mt" id="card-bench">
+      <div class="card-head"><h2>Rispetto al benchmark</h2><button type="button" class="info" data-info="bench" data-ctx="panoramica" aria-label="Spiegazione: Rispetto al benchmark" aria-expanded="false" aria-controls="info-pop">?</button><span class="sub">stessi mesi della gestione precedente</span></div>
+      <div id="bench-body"></div>
     </div>
 
     <div class="card mt">

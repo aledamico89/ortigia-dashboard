@@ -223,6 +223,7 @@ input[type="checkbox"] { width: 20px; height: 20px; min-height: 0; accent-color:
 .note.bad { border-left: 4px solid var(--bad); }
 .badge { display: inline-block; font-size: var(--fs-xs); padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; font-weight: 500; }
 .badge.ok { background: rgba(12,163,12,.14); color: var(--good-ink); }
+.badge.bad { background: rgba(208,59,59,.16); color: var(--bad-ink); }
 .badge.warn { background: rgba(250,178,25,.2); color: var(--ink-2); }
 details.box { border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; background: var(--surface); }
 details.box summary { cursor: pointer; font-weight: 650; font-size: var(--fs-md); }
@@ -281,3 +282,23 @@ footer { color: var(--muted); font-size: var(--fs-sm); padding: 24px 0 44px; }
 .checks .ic { flex: none; width: 1.4em; text-align: center; }
 .checks li.lv-warn { color: var(--ink); font-weight: 500; }
 .map-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); margin: 12px 0; }
+
+/* ---------- Confronto con il benchmark ---------- */
+.bench-sum { font-size: var(--fs-md); color: var(--ink); margin: 0 0 12px; }
+.bench-sum .pos, .bench-sum .neg { font-weight: 650; }
+#bench-body td small { display: block; color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+#bench-body td strong { font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) {
+  #bench-body .table-wrap { overflow: visible; margin: 0; padding: 0; }
+  #bench-body table, #bench-body tbody, #bench-body tr, #bench-body td { display: block; width: 100%; }
+  #bench-body thead { display: none; }
+  #bench-body tr { padding: 12px 0; border-bottom: 1px solid var(--grid); }
+  #bench-body tr:last-child { border-bottom: 0; }
+  #bench-body td { border: 0; padding: 6px 0; text-align: left; white-space: normal; }
+  #bench-body td::before { content: attr(data-l); display: block; font-size: var(--fs-xs); color: var(--muted); }
+  #bench-body td strong { font-size: var(--fs-lg); }
+  #bench-body td small { white-space: normal; }
+  #bench-body td:first-child { font-weight: 650; font-size: var(--fs-md); }
+  #bench-body td:first-child::before { content: none; }
+  #bench-body tr:hover td { background: transparent; }
+}

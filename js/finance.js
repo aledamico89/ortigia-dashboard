@@ -341,3 +341,50 @@ export function primoMese(sim, pred) {
   const r = sim.find(pred);
   return r ? r.mese : null;
 }
+
+// ---------- Confronto con il benchmark ----------
+const delta = (a, b) => (b ? a / b - 1 : null);
+export const SOGLIA_LINEA = 0.05; // entro ±5% = "in linea"
+export const verdetto = (d) => (d == null ? null : d > SOGLIA_LINEA ? 'sopra' : d < -SOGLIA_LINEA ? 'sotto' : 'in linea');
+
+/**
+ * Confronta i mesi della TUA gestione (con un resoconto registrato) con gli stessi mesi della gestione precedente.
+ * Benchmark = media degli anni disponibili: 2024 e 2025 (notti dal calendario di occupazione, lordo STIMATO come
+ * notti × prezzo medio annuo, perché del lordo si ha solo il totale annuo) e, per gennaio–giugno, 2026 (reale).
+ * I mesi 2026 da luglio in poi non si usano: nell'export di luglio erano solo prenotazioni parziali.
+ */
+export function confrontoBenchmark(data, righe) {
+  const st = data.storico; const c26 = st['2026']?.completi_fino_a ?? 6;
+  const giorniMese = (mese) => { const [y, m] = mese.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+  const anniDelMese = (mi) => {
+    const out = [];
+    for (const y of ['2024', '2025']) {
+      const s = st[y]; if (!s) continue;
+      out.push({ anno: y, notti: s.notti[mi], lordo: s.notti[mi] * (s.adr ?? s.lordo_annuo / (somma(s.notti) || 1)) });
+    }
+    if (mi < c26 && st['2026']) out.push({ anno: '2026', notti: st['2026'].notti[mi], lordo: st['2026'].lordo[mi] });
+    return out;
+  };
+  const rowsOut = [];
+  for (const r of righe) {
+    if (!r.inc) continue;
+    const anni = anniDelMese(Number(r.mese.slice(5, 7)) - 1);
+    if (!anni.length) continue;
+    const media = (k) => somma(anni.map((a) => a[k])) / anni.length;
+    rowsOut.push({ mese: r.mese, giorni: giorniMese(r.mese), anni: anni.map((a) => a.anno),
+      own: { notti: r.notti, lordo: r.lordo }, bench: { notti: media('notti'), lordo: media('lordo') } });
+  }
+  const completa = (x) => {
+    const adrO = x.own.notti ? x.own.lordo / x.own.notti : 0; const adrB = x.bench.notti ? x.bench.lordo / x.bench.notti : 0;
+    const d = { notti: delta(x.own.notti, x.bench.notti), adr: delta(adrO, adrB), lordo: delta(x.own.lordo, x.bench.lordo) };
+    return { ...x, own: { ...x.own, adr: adrO }, bench: { ...x.bench, adr: adrB }, d, verdetto: verdetto(d.lordo) };
+  };
+  const righeC = rowsOut.map(completa);
+  let totale = null;
+  if (righeC.length) {
+    totale = completa({ mese: null, giorni: somma(righeC.map((x) => x.giorni)), anni: [...new Set(righeC.flatMap((x) => x.anni))],
+      own: { notti: somma(righeC.map((x) => x.own.notti)), lordo: somma(righeC.map((x) => x.own.lordo)) },
+      bench: { notti: somma(righeC.map((x) => x.bench.notti)), lordo: somma(righeC.map((x) => x.bench.lordo)) } });
+  }
+  return { righe: righeC, totale, nMesi: righeC.length };
+}
