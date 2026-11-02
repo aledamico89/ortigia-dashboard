@@ -131,10 +131,10 @@ export function createInfo(fmt) {
     },
     // ---------- Simulatore ----------
     simCf: {
-      t: 'Cash flow medio mensile (anno 1)',
-      cosa: 'Quanto ti entra (o devi aggiungere) in media ogni mese nel primo anno, con i parametri impostati a sinistra.',
-      calc: ({ cfY1 }) => `Cash flow del primo anno ${eurS(cfY1)} ÷ 12 = <strong>${eurS(cfY1 / 12)}</strong> al mese.`,
-      leggi: 'La media nasconde la stagionalità: in estate il cash flow è positivo, in inverno negativo.',
+      t: 'Cash flow medio mensile (12 mesi di rata)',
+      cosa: 'Quanto ti entra (o devi aggiungere) in media ogni mese in un anno intero di rate, con i parametri impostati a sinistra.',
+      calc: ({ cfY1 }) => `Cash flow dei primi 12 mesi con la rata ${eurS(cfY1)} ÷ 12 = <strong>${eurS(cfY1 / 12)}</strong> al mese. Include il preammortamento una tantum della prima rata.`,
+      leggi: 'Il primo anno solare ha meno rate (la prima è a dicembre 2026) e sembrerebbe migliore di quanto sarà a regime: per questo si conta un anno intero di rate. La media nasconde la stagionalità: in estate il cash flow è positivo, in inverno negativo.',
     },
     simRend: {
       t: 'Rendimento netto su prezzo (simulato)',

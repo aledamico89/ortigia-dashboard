@@ -1,10 +1,10 @@
 import {
   CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js?v=20261104a';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261104a';
-import { createInfo } from './info.js?v=20261104a';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104a';
+} from './finance.js?v=20261104c';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261104c';
+import { createInfo } from './info.js?v=20261104c';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104c';
 
 // ---------- Stato ----------
 let data = null;
@@ -281,11 +281,11 @@ function renderRicaviChart(R) {
   const byM = Object.fromEntries(R.map((r) => [r.mese, r]));
   const st = data.storico;
   const refSeries = {
-    2024: { color: css('--s2'), label: 'Storico 2024', val: (mi) => st['2024'].notti[mi] * st['2024'].adr },
-    2025: { color: css('--s3'), label: 'Storico 2025', val: (mi) => st['2025'].notti[mi] * st['2025'].adr },
-    2026: { color: css('--s7'), label: 'Storico 2026', val: (mi) => st['2026'].lordo[mi] || null },
+    2024: { color: css('--s2'), label: 'Benchmark 2024', val: (mi) => st['2024'].notti[mi] * st['2024'].adr },
+    2025: { color: css('--s3'), label: 'Benchmark 2025', val: (mi) => st['2025'].notti[mi] * st['2025'].adr },
+    2026: { color: css('--s7'), label: 'Benchmark 2026 (gen–giu)', val: (mi) => (mi < (st['2026'].completi_fino_a ?? 6) ? st['2026'].lordo[mi] || null : null) },
   };
-  $('#ref-chips').innerHTML = '<span class="lbl">Confronta</span>' + Object.entries(refSeries).map(([y, s]) => `<label class="chip ${ui.refs[y] ? '' : 'off'}" style="color:${s.color}"><input type="checkbox" data-y="${y}" ${ui.refs[y] ? 'checked' : ''}><span class="sw"></span><span style="color:var(--ink-2)">${y}</span></label>`).join('');
+  $('#ref-chips').innerHTML = '<span class="lbl">Benchmark gestione precedente</span>' + Object.entries(refSeries).map(([y, s]) => `<label class="chip ${ui.refs[y] ? '' : 'off'}" style="color:${s.color}"><input type="checkbox" data-y="${y}" ${ui.refs[y] ? 'checked' : ''}><span class="sw"></span><span style="color:var(--ink-2)">${y}</span></label>`).join('');
   $$('#ref-chips input').forEach((i) => i.addEventListener('change', () => { ui.refs[i.dataset.y] = i.checked; saveUI(); renderRicaviChart(R); }));
   const ds = [{
     type: 'bar', label: 'Reale', data: mesi.map((m) => (byM[m]?.inc ? byM[m].lordo : null)),
@@ -710,7 +710,7 @@ function previewXlsx(rows, file) {
         const g = groups[m]; const prev = data.incassi.find((x) => x.mese === m);
         const rec = { ...(prev || { ritenuta: 0, bonifico: null, fee_pm: null, nota: '' }), mese: m, fonte: 'excel', stato: prev?.stato === 'definitivo' ? 'definitivo' : 'provvisorio',
           lordo: Math.round(g.reduce((s, b) => s + b.lordo, 0) * 100) / 100, commissioni: Math.round(g.reduce((s, b) => s + b.commissioni, 0) * 100) / 100,
-          notti: g.reduce((s, b) => s + b.notti, 0), prenotazioni: g.length, dettaglio: g,
+          notti: g.reduce((s, b) => s + b.notti, 0), prenotazioni: g.length, dettaglio: g, importato: today(),
           allegati: [...new Set([...(prev?.allegati || []), ...(path ? [path] : [])])] };
         data.incassi = data.incassi.filter((x) => x.mese !== m).concat(rec);
       }
@@ -789,7 +789,10 @@ function updateSim() {
   const p = simParams();
   const sim = runScenario({ ...p, anni: 30 });
   const view = sim.slice(0, p.anni * 12);
-  const y1 = sim.slice(0, 12);
+  // primi 12 mesi CON la rata (dalla prima rata): un anno intero di rate, più il preammortamento una tantum.
+  // Il primo anno solare di gestione ha meno rate e darebbe un cash flow troppo ottimista.
+  const m0 = Math.max(0, monthDiff(data.immobile.inizio_gestione, data.mutuo.prima_rata.slice(0, 7)));
+  const y1 = sim.slice(m0, m0 + 12);
   const sum = (a, f) => a.reduce((s, r) => s + f(r), 0);
   const cap = capitaleProprio(data);
   const lordoY1 = sum(y1, (r) => r.lordo); const noiY1 = sum(y1, (r) => r.noi); const cfY1 = sum(y1, (r) => r.cf);
@@ -800,7 +803,7 @@ function updateSim() {
   const Lbe = (p.costiAnnui + servizio) / kf;
   const when = (m) => (m ? `${monthLabel(m, true)} · ${Math.ceil((monthDiff(data.immobile.inizio_gestione, m) + 1) / 12)}° anno` : 'oltre 30 anni');
   const tiles = [
-    ['Cash flow medio mensile (anno 1)', eurS(cfY1 / 12), `annuo ${eurS(cfY1)}`, cls(cfY1), 'simCf'],
+    ['Cash flow medio mensile (12 mesi di rata)', eurS(cfY1 / 12), `annuo ${eurS(cfY1)}`, cls(cfY1), 'simCf'],
     ['Rendimento netto su prezzo', pct(noiY1 / data.immobile.prezzo), `cash-on-cash ${pct(cfY1 / cap)}`, cls(noiY1), 'simRend'],
     ['Breakeven di cassa', bc ? monthLabel(bc, true) : 'oltre 30 anni', bc ? when(bc) : 'il CF cumulato non recupera il capitale', '', 'simBc'],
     ['Breakeven patrimoniale', bp ? monthLabel(bp, true) : 'oltre 30 anni', bp ? when(bp) : 'con questi parametri', '', 'simBp'],

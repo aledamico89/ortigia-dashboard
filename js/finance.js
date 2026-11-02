@@ -233,31 +233,41 @@ export function kpi(data, reg, modoValore = 'nominale') {
 
 // ---------- Simulatore ----------
 export function stagionalita(storico) {
+  // Media per mese sugli anni COMPLETI della gestione precedente: 2024, 2025 e i mesi 2026 chiusi alla data dell'export
+  // (da luglio 2026 l'export contiene solo prenotazioni parziali, che sottostimerebbero la stagione alta).
+  const completi26 = storico['2026']?.completi_fino_a ?? 6;
   const w = Array(12).fill(0);
-  for (const y of ['2024', '2025']) storico[y]?.notti.forEach((v, i) => { w[i] += v; });
-  const s26 = storico['2026']?.notti || [];
-  s26.forEach((v, i) => { if (i < 10) w[i] += v; else w[i] += (w[i] / 2); });
-  const tot = w.reduce((a, b) => a + b, 0) || 12;
-  return w.map((v) => v / tot);
+  for (let i = 0; i < 12; i++) {
+    const v = [storico['2024']?.notti[i], storico['2025']?.notti[i], i < completi26 ? storico['2026']?.notti[i] : undefined].filter((x) => x != null);
+    w[i] = v.reduce((x, y) => x + y, 0) / (v.length || 1);
+  }
+  const tot = w.reduce((x, y) => x + y, 0) || 1;
+  return w.map((x) => x / tot);
 }
 
+const somma = (a) => a.reduce((x, y) => x + y, 0);
+
+/** Scenari di partenza del simulatore: sono BENCHMARK della gestione precedente (proprietario dal 30/09/2026). */
 export function presets(data) {
   const st = data.storico;
-  const comm26 = st['2026'].commissioni.reduce((a, b) => a + b, 0) / st['2026'].lordo.reduce((a, b) => a + b, 0);
-  const commPct = Math.round(comm26 * 1000) / 10;
-  const n26 = st['2026'].notti.slice(0, 10).reduce((a, b) => a + b, 0);
-  const l26 = st['2026'].lordo.slice(0, 10).reduce((a, b) => a + b, 0);
-  // Nov–Dic 2026 stimati come media 2024–2025
-  const nd = Math.round(((st['2024'].notti[10] + st['2024'].notti[11]) + (st['2025'].notti[10] + st['2025'].notti[11])) / 2);
-  const notti26 = n26 + nd;
-  const adr26 = Math.round(l26 / n26);
-  const n24 = st['2024'].notti.reduce((a, b) => a + b, 0);
-  const n25 = st['2025'].notti.reduce((a, b) => a + b, 0);
+  const c26 = st['2026']?.completi_fino_a ?? 6;
+  const n24 = somma(st['2024'].notti); const n25 = somma(st['2025'].notti);
+  const adrBase = (st['2024'].lordo_annuo + st['2025'].lordo_annuo) / (n24 + n25);
+  // Commissioni dei portali: tariffe reali dei tuoi resoconti × mix canali dei mesi completi 2026 (fallback: rapporto storico)
+  const mix = st['2026']?.mix_canali; const tar = data.pm?.tariffe_portali;
+  let commPct;
+  if (mix && tar) commPct = Math.round(Object.entries(mix).reduce((x, [k, q]) => x + q * (tar[k] ?? 0), 0) * 1000) / 10;
+  else commPct = Math.round(somma(st['2026'].commissioni) / (somma(st['2026'].lordo) || 1) * 1000) / 10;
+  // 2026 = mesi completi (gestione precedente) + resto dell'anno come media 2024–25 degli stessi mesi, al prezzo medio 2024–25
+  const nCompleti = somma(st['2026'].notti.slice(0, c26)); const lCompleti = somma(st['2026'].lordo.slice(0, c26));
+  const nResto = (somma(st['2024'].notti.slice(c26)) + somma(st['2025'].notti.slice(c26))) / 2;
+  const notti26 = nCompleti + nResto;
+  const adr26 = (lCompleti + nResto * adrBase) / notti26;
   return {
     '2024': { label: '2024', notti: n24, adr: Math.round(st['2024'].lordo_annuo / n24), commPct },
     '2025': { label: '2025', notti: n25, adr: Math.round(st['2025'].lordo_annuo / n25), commPct },
-    '2026': { label: '2026 proiettato', notti: notti26, adr: adr26, commPct },
-    media: { label: 'Media 24–25', notti: Math.round((n24 + n25) / 2), adr: Math.round((st['2024'].lordo_annuo + st['2025'].lordo_annuo) / (n24 + n25)), commPct },
+    '2026': { label: '2026 stimato', notti: Math.round(notti26), adr: Math.round(adr26), commPct },
+    media: { label: 'Media 24–25', notti: Math.round((n24 + n25) / 2), adr: Math.round(adrBase), commPct },
   };
 }
 

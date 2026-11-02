@@ -178,7 +178,7 @@ export function controlla(p, ctx) {
   const out = []; const add = (livello, testo) => out.push({ livello, testo });
   const { book, totali: T, somma: S } = p;
   const fmt = (x) => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' }).format(x);
-  const d = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+  const d = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;  // gg/mm
 
   add('ok', `${book.length} prenotazioni, ${S.notti} notti.`);
 
@@ -243,12 +243,14 @@ export function controlla(p, ctx) {
   // 9. confronto con dati già presenti
   const e = ctx.esistente;
   if (e) {
-    add('info', `Il mese ha già un record ${e.stato || ''} (lordo ${fmt(e.lordo)} €, ${e.prenotazioni ?? e.dettaglio?.length ?? '?'} prenotazioni): verrà sostituito (differenza ${fmt(lordo - e.lordo)} €).`);
+    const quando = e.importato ? ` importato il ${d(e.importato)}` : '';
+    add('info', `Il mese ha già un record ${e.stato || ''}${quando} (lordo ${fmt(e.lordo)} €, ${e.prenotazioni ?? e.dettaglio?.length ?? '?'} prenotazioni): verrà sostituito (differenza ${fmt(lordo - e.lordo)} €).`);
     const mancanti = (e.dettaglio || []).filter((x) => {
       const c = canaleNormalizzato(x.canale);
       return !book.some((b) => compatibile(canaleNormalizzato(b.canale), c) && sovrapposte(b, { check_in: x.check_in, check_out: x.check_out }));
     });
-    for (const x of mancanti) add('warn', `Nel dato provvisorio c'era ${canaleNormalizzato(x.canale)} ${d(x.check_in)}→${d(x.check_out)} (${fmt(x.lordo)} €) che nel resoconto non compare: chiedi al PM se è stata cancellata o è esclusa.`);
+    // le prenotazioni dell'export provvisorio possono essere state cancellate o modificate dopo: è una nota, non un errore
+    for (const x of mancanti) add('info', `Nel dato provvisorio${quando} c'era ${canaleNormalizzato(x.canale)} ${d(x.check_in)}→${d(x.check_out)} (${fmt(x.lordo)} €) che nel resoconto non compare: può essere stata cancellata o modificata dopo l'export.`);
   }
   return out;
 }
