@@ -1,10 +1,10 @@
 import {
   CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js?v=20261102b';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261102b';
-import { createInfo } from './info.js?v=20261102b';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261102b';
+} from './finance.js?v=20261104a';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261104a';
+import { createInfo } from './info.js?v=20261104a';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104a';
 
 // ---------- Stato ----------
 let data = null;
@@ -926,6 +926,8 @@ function renderSettings() {
       <label class="f">Base cedolare<select name="ced_base"><option value="lordo">lordo pagato dall'ospite</option><option value="netto_portali">netto commissioni portali</option></select></label>
       <label class="f">Rata mutuo (€)<input type="number" step="0.01" name="rata" value="${data.mutuo.rata}"></label>
       <label class="f">Spese incasso rata (€)<input type="number" step="0.01" name="spese_incasso" value="${data.mutuo.spese_incasso}"></label>
+      <label class="f">Data prima rata<input type="date" name="prima_rata" value="${data.mutuo.prima_rata}"></label>
+      <label class="f">Preammortamento nella prima rata (€)<input type="number" step="0.01" name="preamm" value="${data.mutuo.preammortamento || 0}"></label>
       <label class="f">Inizio gestione<input type="month" name="inizio" value="${data.immobile.inizio_gestione}"></label>
     </div>
     <h3 style="margin:18px 0 8px">Budget costi annui</h3>
@@ -981,6 +983,7 @@ $('#f-param').addEventListener('submit', async (e) => {
   data.pm.fee = Number(f.pm_fee.value) / 100; data.pm.base = f.pm_base.value;
   data.fiscale.cedolare = Number(f.ced.value) / 100; data.fiscale.base = f.ced_base.value;
   data.mutuo.rata = Number(f.rata.value); data.mutuo.spese_incasso = Number(f.spese_incasso.value);
+  data.mutuo.prima_rata = f.prima_rata.value || data.mutuo.prima_rata; data.mutuo.preammortamento = Number(f.preamm.value) || 0;
   data.immobile.inizio_gestione = f.inizio.value || data.immobile.inizio_gestione;
   data.budget.forEach((x, i) => { x.voce = f[`b_voce_${i}`].value; x.annuo = Number(f[`b_annuo_${i}`].value); x.certo = f[`b_certo_${i}`].checked; x.dal = f[`b_dal_${i}`].value || x.dal; });
   ui.sim.feePct = data.pm.fee * 100; ui.sim.cedPct = data.fiscale.cedolare * 100; ui.sim.cedBase = data.fiscale.base; ui.sim.costiAnnui = costiAnnuiBudget(); saveUI();

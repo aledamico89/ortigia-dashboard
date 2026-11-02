@@ -8,8 +8,11 @@ export function createInfo(fmt) {
   const annual = (x, n) => (n ? x * 12 / n : 0);
   const pochiMesi = (k) => (k.mesi < 12
     ? `Con ${mesiTxt(k.mesi)} di dati il valore è poco affidabile: la stagionalità pesa molto (estate piena, inverno quasi vuoto). Diventa significativo dopo 12 mesi.` : '');
-  const senzaRata = (R) => (R?.some((r) => r.servizio === 0)
-    ? 'Nei mesi prima della prima rata del mutuo (2 novembre 2026) il cash flow risulta più alto del normale.' : '');
+  const senzaRata = (R, data) => {
+    if (!R?.some((r) => r.servizio === 0)) return '';
+    const d = data?.mutuo?.prima_rata; const q = d ? new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+    return `Nei mesi prima della prima rata del mutuo${q ? ` (${q})` : ''} il cash flow risulta più alto del normale.`;
+  };
 
   const INFO = {
     // ---------- Panoramica ----------
@@ -18,7 +21,7 @@ export function createInfo(fmt) {
       cosa: 'Quanti soldi ti sono rimasti in tasca (o hai dovuto aggiungere) dall\'inizio della gestione, dopo aver pagato proprio tutto.',
       calc: ({ k }) => `Lordo ${eur(k.lordo)} − portali ${eur(k.comm)} − property manager ${eur(k.fee)} − cedolare ${eur(k.ced)} − costi ${eur(k.costi)} − rata mutuo ${eur(k.interessi + k.capitale + k.speseMutuo)} = <strong>${eurS(k.cfCum)}</strong>`,
       leggi: 'Positivo: la casa si paga da sola e avanza qualcosa. Negativo: stai integrando di tasca tua. Nella rata c\'è anche la quota capitale, che non è persa: riduce il debito e diventa patrimonio tuo.',
-      nota: ({ R }) => senzaRata(R),
+      nota: ({ R, data }) => senzaRata(R, data),
     },
     bkCassa: {
       t: 'Breakeven di cassa',
@@ -46,7 +49,7 @@ export function createInfo(fmt) {
       cosa: 'Il rendimento sui soldi che hai messo tu, dopo aver pagato anche la rata del mutuo. È la risposta a "quanto mi entra in tasca rispetto a quanto ho investito".',
       calc: ({ k }) => `Cash flow ${eurS(k.cfCum)} in ${mesiTxt(k.mesi)} → ${eurS(annual(k.cfCum, k.mesi))} l'anno ÷ capitale proprio ${eur(k.cap)} = <strong>${pct(k.cashOnCash)}</strong>.`,
       leggi: 'Può essere più alto del rendimento su prezzo (la banca ti presta a un tasso inferiore a quanto rende la casa) oppure più basso, anche negativo, se la rata pesa più del reddito.',
-      nota: ({ k, R }) => [pochiMesi(k), senzaRata(R)].filter(Boolean).join(' '),
+      nota: ({ k, R, data }) => [pochiMesi(k), senzaRata(R, data)].filter(Boolean).join(' '),
     },
     roi: {
       t: 'ROI totale',
