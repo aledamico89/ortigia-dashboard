@@ -1,10 +1,10 @@
 import {
   confrontoBenchmark, CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt, commDaQuote,
-} from './finance.js?v=20261104g';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261104g';
-import { createInfo } from './info.js?v=20261104g';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104g';
+} from './finance.js?v=20261104h';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261104h';
+import { createInfo } from './info.js?v=20261104h';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104h';
 
 // ---------- Stato ----------
 let data = null;
@@ -347,14 +347,14 @@ function datiCanali(R) {
 
 function renderSplit(k, R) {
   const L = k.lordo;
-  $('#split-sub').textContent = `${k.mesi} ${k.mesi === 1 ? 'mese' : 'mesi'} · su ${eur(L)} lordi · % sul lordo`;
+  $('#split-sub').textContent = `${k.mesi} ${k.mesi === 1 ? 'mese' : 'mesi'} · su ${eur(L)} lordi · le altre % sono sul lordo`;
   if (!L) { $('#split').innerHTML = '<div class="empty">Nessun incasso registrato nel periodo.</div>'; return; }
   // tariffe vere: ogni portale trattiene la sua percentuale; il PM prende il suo sul netto di ciascun soggiorno
   const per = datiCanali(R); const Lc = Object.values(per).reduce((x, c) => x + c.lordo, 0);
   const tariffe = Lc > L - 1 && Lc > 0 ? Object.entries(per).filter(([, c]) => c.lordo > 0).map(([n, c]) => `${esc(n)} ${pct(c.comm / c.lordo)}`).join(' · ') : '';
   const netto = L - k.comm;
-  const subComm = tariffe ? `${tariffe}: ogni portale trattiene la sua percentuale` : 'media di tutti i portali (tariffe diverse per canale)';
-  const subFee = data.pm.base === 'lordo' ? '' : `${pct(netto ? k.fee / netto : 0)} del netto dopo i portali, calcolato su ogni soggiorno`;
+  const subComm = tariffe ? `${tariffe} del lordo di ciascun canale` : 'tariffe diverse per canale: importa il resoconto del PM per vederle';
+  const subFee = data.pm.base === 'lordo' ? `${pct(k.fee / L)} del lordo` : `${pct(netto ? k.fee / netto : 0)} del netto di ogni soggiorno, dopo i portali`;
   const rows = [
     ['Commissioni portali', k.comm, subComm], ['Property manager', k.fee, subFee], ['Cedolare secca', k.ced], ['Costi operativi', k.costi],
     ['Interessi e spese mutuo', k.interessi + k.speseMutuo], ['Quota capitale mutuo', k.capitale],
@@ -362,7 +362,7 @@ function renderSplit(k, R) {
   const max = Math.max(L, ...rows.map((r) => r[1]), Math.abs(k.cfCum));
   const bar = (v, color) => `<div class="meter-track" style="background:var(--surface-2)"><div class="meter-fill" style="width:${Math.min(100, Math.abs(v) / max * 100)}%;background:${color}"></div></div>`;
   $('#split').innerHTML = `<div class="stack" style="--gap:8px">${rows.map(([l, v, sub]) => `
-    <div><div class="meter-row"><span>${l}</span><span class="num">${eur(v)} <small>· ${pct(v / L, 1)}</small></span></div>${sub ? `<div class="muted" style="font-size:var(--fs-xs);margin:-2px 0 4px">${sub}</div>` : ''}${bar(v, css('--s1'))}</div>`).join('')}
+    <div><div class="meter-row"><span>${l}</span><span class="num">${eur(v)}${sub ? '' : ` <small>· ${pct(v / L, 1)}</small>`}</span></div>${sub ? `<div class="muted" style="font-size:var(--fs-xs);margin:-2px 0 4px">${sub}</div>` : ''}${bar(v, css('--s1'))}</div>`).join('')}
     <div><div class="meter-row"><strong>Cash flow netto</strong><span class="num ${cls(k.cfCum)}"><strong>${eurS(k.cfCum)}</strong> <small>· ${pct(k.cfCum / L, 1)}</small></span></div>${bar(k.cfCum, k.cfCum >= 0 ? css('--good') : css('--bad'))}</div>
     <p class="muted" style="font-size:var(--fs-xs);margin:0">La quota capitale non è una perdita: riduce il debito e aumenta il tuo patrimonio netto.</p></div>`;
 }
