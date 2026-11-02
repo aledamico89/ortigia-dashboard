@@ -14,10 +14,10 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Ortigia Investimento</title>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-  <link rel="stylesheet" href="css/style.css?v=20261014c">
+  <link rel="stylesheet" href="css/style.css?v=20261102b">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-  <script type="module" src="js/app.js?v=20261014c"></script>
+  <script type="module" src="js/app.js?v=20261102b"></script>
 </head>
 <body>
 <header class="top">
@@ -135,14 +135,23 @@
       <div class="card">
         <div class="card-head"><h3>Carica estratto o export prenotazioni</h3></div>
         <label class="drop" id="drop-xlsx" tabindex="0">
-          <input type="file" id="file-xlsx" accept=".xlsx,.xls,.csv">
-          <strong>Trascina qui l'Excel del PM</strong><br><small>oppure clicca per sceglierlo · .xlsx / .csv</small>
+          <input type="file" id="file-xlsx" accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg">
+          <strong>Trascina qui il file del PM</strong><br><small>resoconto mensile o export prenotazioni (Excel) · fatture e PDF vengono allegati al mese</small>
         </label>
-        <div class="toolbar" style="margin:10px 0 0">
+        <div class="toolbar" id="attr-toolbar" style="margin:10px 0 0" hidden>
           <span class="lbl">Attribuisci al mese di</span>
           <div class="seg" id="seg-attr"><button data-v="check_in" aria-pressed="true">check-in</button><button data-v="check_out" aria-pressed="false">check-out</button></div>
         </div>
         <div id="xlsx-preview"></div>
+        <details class="box" style="margin-top:14px"><summary>Quali file posso caricare?</summary>
+          <ul class="prose" style="margin:0;padding-left:1.2em">
+            <li><strong>Resoconto mensile del PM</strong> (Excel con portale, check-in/out, lordo, commissioni, totali): è il documento <em>definitivo</em>. Controllo che i totali tornino, che la commissione sia quella pattuita e che non manchino prenotazioni rispetto ai dati provvisori.</li>
+            <li><strong>Export prenotazioni</strong> del gestionale: dato <em>provvisorio</em>, utile per vedere in anticipo il mese.</li>
+            <li><strong>Un Excel con un formato nuovo</strong>: se cambiano le intestazioni provo a riconoscerle; altrimenti ti chiedo di abbinare le colonne una volta sola e me lo ricordo.</li>
+            <li><strong>Fatture e PDF</strong>: non vengono letti, ma allegati al mese che scegli.</li>
+          </ul>
+          <p class="fine">I nomi degli ospiti non vengono mai salvati nei dati: restano solo nel file originale allegato, nel repository privato.</p>
+        </details>
       </div>
       <div class="card">
         <div class="card-head"><h3 id="inc-form-title">Inserimento manuale</h3></div>

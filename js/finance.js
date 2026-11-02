@@ -148,6 +148,9 @@ export function registro(data, fine, opts = { stime: true }) {
     const costi = {}; let costiTot = 0; let costiStimati = 0;
     // spese reali
     for (const [cat, v] of Object.entries(alloc[mese] || {})) { costi[cat] = { importo: v, stimato: false }; costiTot += v; }
+    // spese addebitate dal PM nel resoconto del mese (es. pulizie extra): già sottratte dal bonifico, quindi costo operativo
+    const extraPM = inc ? Number(inc.spese_pm || 0) : 0;
+    if (extraPM) { costi.pm_extra = { importo: extraPM, stimato: false }; costiTot += extraPM; }
     // budget per categorie non coperte
     for (const b of data.budget) {
       if (b.dal && monthDiff(b.dal, mese) < 0) continue;

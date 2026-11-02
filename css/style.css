@@ -266,3 +266,18 @@ footer { color: var(--muted); font-size: var(--fs-sm); padding: 24px 0 44px; }
   nav.tabs button { padding: 12px 10px; }
 }
 @media print { header.top, nav.tabs, .actions, .toolbar { display: none; } section.view { display: block !important; } }
+
+/* ---------- Import resoconto PM ---------- */
+.rep { margin-top: 16px; border-top: 1px solid var(--grid); padding-top: 16px; }
+.rep-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.rep-head select { width: auto; min-height: 40px; }
+.rep-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 10px; margin-bottom: 12px; }
+.rep-sum > div { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+.rep-sum span { display: block; font-size: var(--fs-xs); color: var(--muted); }
+.rep-sum strong { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.checks { list-style: none; padding: 0; margin: 0 0 12px; }
+.checks li { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--grid); font-size: var(--fs-sm); color: var(--ink-2); align-items: flex-start; }
+.checks li:last-child { border-bottom: 0; }
+.checks .ic { flex: none; width: 1.4em; text-align: center; }
+.checks li.lv-warn { color: var(--ink); font-weight: 500; }
+.map-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); margin: 12px 0; }

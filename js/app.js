@@ -1,9 +1,10 @@
 import {
   CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js?v=20261014c';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261014c';
-import { createInfo } from './info.js?v=20261014c';
+} from './finance.js?v=20261102b';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261102b';
+import { createInfo } from './info.js?v=20261102b';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261102b';
 
 // ---------- Stato ----------
 let data = null;
@@ -123,7 +124,7 @@ function applyPrivacy() {
 }
 $('#privacy-btn').addEventListener('click', () => {
   ui.privacy = !ui.privacy; saveUI(); applyPrivacy();
-  if (data) { renderAll(); requestAnimationFrame(() => ({ panoramica: renderPanoramica, simulatore: updateSim, mercato: renderMercato }[ui.view]?.())); }
+  if (data) { renderAll(); if (ridisegnaAnteprima && $('#rep-go')) ridisegnaAnteprima(); requestAnimationFrame(() => ({ panoramica: renderPanoramica, simulatore: updateSim, mercato: renderMercato }[ui.view]?.())); }
 });
 $('#theme-btn').addEventListener('click', () => {
   ui.theme = { auto: 'light', light: 'dark', dark: 'auto' }[ui.theme]; saveUI(); applyTheme();
@@ -197,12 +198,10 @@ function renderAll() {
 }
 
 function fineAnalisi() {
-  const cm = currentMonth();
-  const lastInc = data.incassi.map((x) => x.mese).sort().pop();
-  let fine = cm;
-  if (lastInc && monthDiff(fine, lastInc) > 0) fine = lastInc;
-  if (monthDiff(data.immobile.inizio_gestione, fine) < 0) fine = data.immobile.inizio_gestione;
-  return fine;
+  // Ultimo mese "chiuso" = quello dell'ultimo incasso registrato. Un mese in corso senza resoconto non conta:
+  // le rate ci sarebbero già, ma gli incassi non sono ancora noti e il cash flow risulterebbe falsato.
+  const ultimo = data.incassi.map((x) => x.mese).sort().pop();
+  return ultimo && monthDiff(data.immobile.inizio_gestione, ultimo) >= 0 ? ultimo : data.immobile.inizio_gestione;
 }
 
 // ---------- PANORAMICA ----------
@@ -359,7 +358,7 @@ function renderTabellaMensile(R) {
     const est = r.costiStimati ? '<span class="est" title="include costi stimati">ˢ</span>' : '';
     return `<tr><td>${monthLabel(r.mese, true)}${r.inc?.stato === 'provvisorio' ? ' <span class="badge warn">prov.</span>' : ''}${!r.inc ? ' <span class="badge">no incassi</span>' : ''}</td>
       <td class="n">${eur(r.lordo)}</td><td class="n">${eur(-r.comm)}</td><td class="n">${eur(-r.fee)}</td><td class="n">${eur(-r.ced)}</td>
-      <td class="n" title="${esc(Object.entries(r.costi).map(([c, v]) => `${CATEGORIE[c] || c}: ${eur(v.importo, 2)}${v.stimato ? ' (stima)' : ''}`).join('\n'))}">${eur(-r.costiTot)}${est}</td>
+      <td class="n" title="${esc(Object.entries(r.costi).map(([c, v]) => `${CATEGORIE[c] || (c === 'pm_extra' ? 'Spese addebitate dal PM' : c)}: ${eur(v.importo, 2)}${v.stimato ? ' (stima)' : ''}`).join('\n'))}">${eur(-r.costiTot)}${est}</td>
       <td class="n ${cls(r.noi)}">${eur(r.noi)}</td><td class="n">${eur(-r.servizio)}</td><td class="n ${cls(r.cf)}"><strong>${eurS(r.cf)}</strong></td><td class="n ${cls(cum)}">${eurS(cum)}</td><td class="n">${eur(r.debito)}</td></tr>`;
   });
   const t = (f) => R.reduce((s, r) => s + f(r), 0);
@@ -393,12 +392,14 @@ function renderRegistro() {
   const inc = data.incassi.slice().sort((a, b) => b.mese.localeCompare(a.mese));
   $('#t-incassi').innerHTML = inc.length ? `<thead><tr><th>Mese</th><th>Stato</th><th class="n">Lordo</th><th class="n">Portali</th><th class="n">Fee PM</th><th class="n">Netto PM</th><th class="n">Notti</th><th class="n">Ritenuta</th><th class="n">Bonifico</th><th>Fonte</th><th>Allegati</th><th></th></tr></thead><tbody>${inc.map((x) => {
     const fee = x.fee_pm != null && x.fee_pm !== '' ? Number(x.fee_pm) : feePM(data, x.lordo, x.commissioni);
-    const netto = x.lordo - x.commissioni - fee;
-    const diff = x.bonifico != null && x.bonifico !== '' ? Number(x.bonifico) - netto : null;
+    const netto = x.lordo - x.commissioni - fee - Number(x.spese_pm || 0);
+    const atteso = x.dovuto_pm != null && x.dovuto_pm !== '' ? Number(x.dovuto_pm) : netto;
+    const hasBon = x.bonifico != null && x.bonifico !== '';
+    const diff = hasBon ? Number(x.bonifico) - atteso : null;
     return `<tr><td>${monthLabel(x.mese, true)}</td><td><span class="badge ${x.stato === 'definitivo' ? 'ok' : 'warn'}">${esc(x.stato || 'definitivo')}</span></td>
       <td class="n">${eur(x.lordo, 2)}</td><td class="n">${eur(x.commissioni, 2)}</td><td class="n">${eur(fee, 2)}${x.fee_pm == null || x.fee_pm === '' ? '<span class="est" title="calcolata">ᶜ</span>' : ''}</td>
       <td class="n">${eur(netto, 2)}</td><td class="n">${x.notti ?? '—'}</td><td class="n">${eur(x.ritenuta || 0, 2)}</td>
-      <td class="n">${x.bonifico != null && x.bonifico !== '' ? eur(x.bonifico, 2) + (Math.abs(diff) > 1 ? ` <span class="badge warn" title="differenza vs netto atteso">${eurS(diff, 2)}</span>` : ' <span class="badge ok">✓</span>') : '—'}</td>
+      <td class="n">${hasBon ? eur(x.bonifico, 2) + (Math.abs(diff) > 1 ? ` <span class="badge warn" title="differenza rispetto all'importo atteso dal PM">${eurS(diff, 2)}</span>` : ' <span class="badge ok">✓</span>') : (x.dovuto_pm != null ? `<span class="muted" title="importo indicato nel resoconto del PM">atteso ${eur(atteso, 2)}</span>` : '—')}</td>
       <td>${esc(x.fonte || 'manuale')}${x.dettaglio?.length ? ` · ${x.dettaglio.length} pren.` : ''}</td>
       <td>${allegatiLinks(x.allegati)}</td>
       <td style="white-space:nowrap"><button class="btn small ghost" data-edit-inc="${x.mese}">Modifica</button><button class="btn small ghost danger" data-del-inc="${x.mese}">Elimina</button></td></tr>`
@@ -434,7 +435,7 @@ function renderRegistro() {
     : '<tbody><tr><td class="empty">Nessuna stima. Con "Ultima stima" in Panoramica verrà usata la più recente.</td></tr></tbody>';
   $$('[data-del-val]').forEach((b) => b.onclick = async () => { const v = vv[Number(b.dataset.delVal)]; data.valutazioni = data.valutazioni.filter((x) => x !== v); await persist('Elimina stima di valore'); });
 
-  seg($('#seg-attr'), ui.attr, (v) => { ui.attr = v; saveUI(); renderRegistro(); if (lastXlsx) previewXlsx(lastXlsx.rows, lastXlsx.file); });
+  seg($('#seg-attr'), ui.attr, (v) => { ui.attr = v; saveUI(); renderRegistro(); if (lastXlsx?.r?.tipo === 'export') previewXlsx(lastXlsx.rows, lastXlsx.file); });
 }
 
 function allegatiLinks(list) {
@@ -515,25 +516,26 @@ $('#f-valutazione').addEventListener('submit', async (e) => {
   await persist('Nuova stima di valore'); e.target.reset();
 });
 
-// ---------- Import Excel PM ----------
+// ---------- Import file del PM ----------
 let lastXlsx = null;
+let ridisegnaAnteprima = null; // rigenera l'anteprima aperta (es. quando cambia la modalità privacy)
 const drop = $('#drop-xlsx');
 ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
-drop.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) readXlsx(f); });
+drop.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) leggiFile(f); });
 drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#file-xlsx').click(); } });
-$('#file-xlsx').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) readXlsx(f); e.target.value = ''; });
+$('#file-xlsx').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) leggiFile(f); e.target.value = ''; });
 
-function parseDate(v) {
-  if (v == null || v === '') return null;
-  if (v instanceof Date) return v;
-  if (typeof v === 'number') return new Date(Math.round((v - 25569) * 86400 * 1000));
-  const m = String(v).match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
-  if (m) return new Date(Number(m[3].length === 2 ? `20${m[3]}` : m[3]), Number(m[2]) - 1, Number(m[1]));
-  const d = new Date(v); return Number.isNaN(d.getTime()) ? null : d;
+const MAPS_KEY = 'ortigia.maps.v1'; // abbinamenti colonne già confermati, per intestazione
+const loadMaps = () => { try { return JSON.parse(localStorage.getItem(MAPS_KEY)) || {}; } catch { return {}; } };
+const saveMap = (sig, map) => { try { localStorage.setItem(MAPS_KEY, JSON.stringify({ ...loadMaps(), [sig]: map })); } catch { /* ignore */ } };
+const noteBox = (cls, html) => `<div class="note ${cls}" style="margin-top:12px">${html}</div>`;
+
+async function leggiFile(file) {
+  lastXlsx = null; $('#xlsx-preview').innerHTML = ''; $('#attr-toolbar').hidden = true;
+  if (/\.(pdf|png|jpe?g)$/i.test(file.name)) return previewAllegato(file);
+  await readXlsx(file);
 }
-const toNum = (v) => (v == null || v === '' ? 0 : typeof v === 'number' ? v : Number(String(v).replace(/\./g, '').replace(',', '.')) || 0);
-const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 async function readXlsx(file) {
   if (!window.XLSX) { toast('Libreria Excel non ancora caricata, riprova tra un attimo.', true); return; }
@@ -541,9 +543,117 @@ async function readXlsx(file) {
     const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
-    lastXlsx = { rows, file };
-    previewXlsx(rows, file);
+    const r = riconosci(rows);
+    lastXlsx = { rows, file, r };
+    if (r.tipo === 'export') { $('#attr-toolbar').hidden = false; previewXlsx(rows, file); return; }
+    if (r.tipo === 'resoconto') { previewResoconto(rows, file, r); return; }
+    // formato nuovo: provo con un abbinamento già confermato in passato
+    const riga = r.riga >= 0 ? r.riga : rows.findIndex((x) => (x || []).filter((c) => c != null && c !== '').length >= 3);
+    if (riga < 0) { $('#xlsx-preview').innerHTML = noteBox('bad', 'Non trovo nessuna tabella in questo file. È il resoconto del PM?'); return; }
+    const headers = rows[riga].map((c) => String(c ?? '').trim());
+    const sig = headers.map(strip).join('|');
+    const saved = loadMaps()[sig];
+    if (saved && saved.in != null && saved.out != null && saved.lordo != null) previewResoconto(rows, file, { tipo: 'resoconto', riga, map: saved, headers }, 'Uso l\'abbinamento delle colonne che avevi confermato per questo formato.');
+    else previewMappa(rows, file, { riga, map: r.map, headers, sig });
   } catch (e) { toast(`File non leggibile: ${e.message}`, true); }
+}
+
+// Formato non riconosciuto: l'utente abbina le colonne una volta sola
+function previewMappa(rows, file, { riga, map, headers, sig }) {
+  const opts = (sel) => `<option value="">— non presente —</option>${headers.map((h, i) => (h ? `<option value="${i}" ${sel === i ? 'selected' : ''}>${esc(h)}</option>` : '')).join('')}`;
+  $('#xlsx-preview').innerHTML = `<div class="rep"><div class="note warn">Non riconosco questo formato. Ho trovato queste colonne: <strong>${esc(headers.filter(Boolean).join(' · '))}</strong>.<br>Abbina quelle che servono (le prime tre sono indispensabili): me lo ricordo per i prossimi file uguali.</div>
+    <div class="map-grid">${CAMPI.map(([key, label, req]) => `<label class="f">${esc(label)}${req ? ' *' : ''}<select data-map="${key}">${opts(map[key])}</select></label>`).join('')}</div>
+    <div class="actions"><button class="btn primary" id="map-go">Usa questo abbinamento</button><button class="btn ghost" id="map-cancel">Annulla</button></div></div>`;
+  $('#map-cancel').onclick = () => { $('#xlsx-preview').innerHTML = ''; lastXlsx = null; };
+  $('#map-go').onclick = () => {
+    const m = {}; $$('#xlsx-preview select[data-map]').forEach((sel) => { if (sel.value !== '') m[sel.dataset.map] = Number(sel.value); });
+    if (m.in == null || m.out == null || m.lordo == null) return toast('Servono almeno arrivo, partenza e importo lordo', true);
+    saveMap(sig, m);
+    previewResoconto(rows, file, { tipo: 'resoconto', riga, map: m, headers }, 'Abbinamento salvato: la prossima volta non te lo chiederò.');
+  };
+}
+
+// Resoconto mensile del PM: anteprima con controlli di coerenza, poi importazione come dato definitivo
+function previewResoconto(rows, file, r, intro = '') {
+  const out = $('#xlsx-preview');
+  let p;
+  try { p = leggiResoconto(rows, r); } catch (e) { out.innerHTML = noteBox('bad', esc(e.message)); return; }
+  if (!p.book.length) { out.innerHTML = noteBox('bad', 'Non trovo prenotazioni sotto le intestazioni: controlla che le date siano compilate.'); return; }
+  const sugg = meseSuggerito(p.book, file.name);
+  const mesi = new Set(monthsBetween(data.immobile.inizio_gestione, addMonths(currentMonth(), 1)));
+  if (sugg) mesi.add(sugg);
+  const lista = [...mesi].sort().reverse();
+  let mese = sugg || lista[0];
+
+  const render = () => {
+    const prev = data.incassi.find((x) => x.mese === mese);
+    const rec = costruisciRecord(p, mese);
+    const checks = controlla(p, { mese, feePct: data.pm.fee, rogito: data.immobile.rogito, esistente: prev });
+    const netto = (p.totali.netto ?? p.somma.netto);
+    const fee = rec.fee_pm ?? feePM(data, rec.lordo, rec.commissioni);
+    const dovuto = rec.dovuto_pm ?? Math.round((rec.lordo - rec.commissioni - fee - rec.spese_pm) * 100) / 100;
+    const warn = checks.filter((c) => c.livello === 'warn').length;
+    const ic = { ok: '✅', warn: '⚠️', info: 'ℹ️' };
+    out.innerHTML = `<div class="rep">
+      ${intro ? `<p class="fine" style="margin:0 0 8px">${esc(intro)}</p>` : ''}
+      <div class="rep-head"><h3>Resoconto PM · mese</h3>
+        <select id="rep-mese" aria-label="Mese del resoconto">${lista.map((m) => `<option value="${m}" ${m === mese ? 'selected' : ''}>${monthLabel(m, true)}${monthDiff(data.immobile.inizio_gestione, m) < 0 ? ' (prima della gestione)' : ''}</option>`).join('')}</select>
+        <span class="badge ok">formato riconosciuto</span></div>
+      <div class="rep-sum">
+        <div><span>Lordo</span><strong>${eur(rec.lordo, 2)}</strong></div>
+        <div><span>Portali</span><strong>${eur(rec.commissioni, 2)}</strong></div>
+        <div><span>Fee PM${netto ? ` (${pct(fee / netto)} del netto)` : ''}</span><strong>${eur(fee, 2)}</strong></div>
+        <div><span>Spese extra PM</span><strong>${eur(rec.spese_pm, 2)}</strong></div>
+        <div><span>Importo per te</span><strong>${eur(dovuto, 2)}</strong></div>
+        <div><span>Notti · prenotazioni</span><strong>${rec.notti} · ${rec.prenotazioni}</strong></div>
+      </div>
+      <ul class="checks">${checks.map((c) => `<li class="lv-${c.livello}"><span class="ic" aria-hidden="true">${ic[c.livello]}</span><span><span class="sr-only">${{ ok: 'Ok', warn: 'Attenzione', info: 'Nota' }[c.livello]}: </span>${esc(maskText(c.testo))}</span></li>`).join('')}</ul>
+      <details class="box"><summary>Prenotazioni (${p.book.length})</summary><p class="fine">I nomi degli ospiti non vengono salvati.</p>
+        <div class="table-wrap"><table><thead><tr><th>Canale</th><th>Arrivo</th><th>Partenza</th><th class="n">Notti</th><th class="n">Lordo</th><th class="n">Portali</th><th class="n">Fee PM</th></tr></thead><tbody>
+        ${p.book.map((b) => `<tr><td>${esc(b.canale)}</td><td>${b.check_in.split('-').reverse().join('/')}</td><td>${b.check_out.split('-').reverse().join('/')}</td><td class="n">${b.notti}</td><td class="n">${eur(b.lordo, 2)}</td><td class="n">${eur(b.commissioni, 2)}</td><td class="n">${b.fee != null ? eur(b.fee, 2) : '—'}</td></tr>`).join('')}
+        </tbody></table></div></details>
+      <div class="actions"><button class="btn primary" id="rep-go" ${monthDiff(data.immobile.inizio_gestione, mese) < 0 ? 'disabled' : ''}>Importa come definitivo${warn ? ` (${warn} da verificare)` : ''}</button><button class="btn ghost" id="rep-cancel">Annulla</button></div></div>`;
+    $('#rep-mese').onchange = (e) => { mese = e.target.value; render(); };
+    $('#rep-cancel').onclick = () => { out.innerHTML = ''; lastXlsx = null; ridisegnaAnteprima = null; };
+    $('#rep-go').onclick = async () => {
+      if (prev?.stato === 'definitivo' && !confirm(`${monthLabel(mese, true)} è già definitivo: lo sostituisco con questo resoconto?`)) return;
+      try {
+        const path = await uploadFile(file, `resoconti/${mese}`);
+        const merged = { ritenuta: 0, bonifico: null, ...(prev || {}), ...rec,
+          nota: prev?.stato === 'definitivo' ? (prev.nota || '') : '',
+          allegati: [...new Set([...(prev?.allegati || []), ...(path ? [path] : [])])] };
+        data.incassi = data.incassi.filter((x) => x.mese !== mese).concat(merged);
+        await persist(`Resoconto PM ${mese}`);
+        $('#xlsx-preview').innerHTML = noteBox('', `${monthLabel(mese, true)} importato come <strong>definitivo</strong>. Quando arriva il bonifico, apri il mese con "Modifica" e inserisci l'importo ricevuto: se coincide con ${eur(dovuto, 2)} comparirà ✓.`);
+        lastXlsx = null; ridisegnaAnteprima = null;
+      } catch (err) { if (err?.message) toast(err.message, true); }
+    };
+  };
+  ridisegnaAnteprima = render;
+  render();
+}
+
+// Fatture e PDF: non si leggono, si allegano a un mese
+function previewAllegato(file) {
+  const mesi = data.incassi.map((x) => x.mese).sort().reverse();
+  const out = $('#xlsx-preview');
+  if (!mesi.length) { out.innerHTML = noteBox('warn', 'Registra prima almeno un mese (carica il resoconto Excel o inseriscilo a mano), poi potrai allegarci le fatture.'); return; }
+  out.innerHTML = `<div class="rep"><p class="prose"><strong>${esc(file.name)}</strong>: file non leggibile come dati, lo allego a un mese.</p>
+    <div class="row" style="grid-template-columns:repeat(auto-fit,minmax(12rem,1fr))">
+      <label class="f">Mese<select id="all-mese">${mesi.map((m) => `<option value="${m}">${monthLabel(m, true)}</option>`).join('')}</select></label>
+      <label class="f">Tipo<select id="all-tipo"><option value="fattura-pm">Fattura del PM</option><option value="estratto-conto">Estratto conto</option><option value="altro">Altro</option></select></label></div>
+    <div class="actions"><button class="btn primary" id="all-go">Allega</button><button class="btn ghost" id="all-cancel">Annulla</button></div></div>`;
+  $('#all-cancel').onclick = () => { out.innerHTML = ''; };
+  $('#all-go').onclick = async () => {
+    const mese = $('#all-mese').value; const tipo = $('#all-tipo').value;
+    try {
+      const path = await uploadFile(file, `${mese}/${tipo}`);
+      const rec = data.incassi.find((x) => x.mese === mese);
+      rec.allegati = [...new Set([...(rec.allegati || []), path])];
+      await persist(`Allegato ${tipo} ${mese}`);
+      out.innerHTML = noteBox('', `Allegato a ${monthLabel(mese, true)}.`);
+    } catch (err) { if (err?.message) toast(err.message, true); }
+  };
 }
 
 function parseBookings(rows) {
