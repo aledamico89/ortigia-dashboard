@@ -1,10 +1,10 @@
 import {
   confrontoBenchmark, CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt, commDaQuote,
-} from './finance.js?v=20261104h';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261104h';
-import { createInfo } from './info.js?v=20261104h';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104h';
+} from './finance.js?v=20261104i';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261104i';
+import { createInfo } from './info.js?v=20261104i';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104i';
 
 // ---------- Stato ----------
 let data = null;
@@ -312,8 +312,14 @@ function renderBenchmark(c) {
 function renderRicaviChart(R) {
   const inizio = data.immobile.inizio_gestione;
   const fine = R.length ? R[R.length - 1].mese : inizio;
-  const from = monthDiff(inizio, fine) >= 11 ? addMonths(fine, -11) : inizio;
-  const mesi = monthsBetween(from, addMonths(from, 11));
+  // anno solare: da gennaio a dicembre, a prescindere dal mese in cui è iniziata la gestione
+  const anni = []; for (let y = Number(inizio.slice(0, 4)); y <= Number(fine.slice(0, 4)); y++) anni.push(String(y));
+  const anno = anni.includes(String(ui.annoRicavi)) ? String(ui.annoRicavi) : anni[anni.length - 1];
+  const mesi = monthsBetween(`${anno}-01`, `${anno}-12`);
+  $('#ric-sub').textContent = `${anno} · i tuoi incassi reali vs benchmark della gestione precedente`;
+  $('#ric-anno').style.display = anni.length > 1 ? 'inline-flex' : 'none';
+  $('#ric-anno').innerHTML = anni.map((y) => `<button type="button" data-v="${y}">${y}</button>`).join('');
+  seg($('#ric-anno'), anno, (y) => { ui.annoRicavi = y; saveUI(); renderRicaviChart(R); });
   const byM = Object.fromEntries(R.map((r) => [r.mese, r]));
   const st = data.storico;
   const refSeries = {
