@@ -132,8 +132,8 @@ export function createInfo(fmt) {
     split: {
       t: 'Dove va ogni euro incassato',
       cosa: 'Come si divide il lordo pagato dagli ospiti tra chi lo riceve: portali, property manager, Stato, fornitori, banca e, alla fine, tu.',
-      calc: () => 'Ogni barra è una voce di spesa in euro e in percentuale del lordo. L\'ultima riga, il cash flow netto, è quello che resta.',
-      leggi: 'La quota capitale del mutuo è separata dagli interessi perché non è un costo: è risparmio forzato che aumenta il tuo patrimonio.',
+      calc: () => 'Ogni barra è una voce di spesa in euro e in percentuale del lordo. L\'ultima riga, il cash flow netto, è quello che resta. Sotto portali e property manager trovi le tariffe vere, non la media.',
+      leggi: 'La quota capitale del mutuo è separata dagli interessi perché non è un costo: è risparmio forzato che aumenta il tuo patrimonio. Ogni portale trattiene la sua percentuale (diversa da Booking ad Airbnb) e il property manager prende la sua sul netto di ogni soggiorno: sul lordo il peso complessivo cambia quindi con il mix dei canali.',
     },
     posizione: {
       t: 'Posizione netta nel tempo',
@@ -169,7 +169,7 @@ export function createInfo(fmt) {
     simBe: {
       t: 'Lordo annuo per avere cash flow zero',
       cosa: 'Il fatturato minimo annuo con cui la casa si paga da sola, senza che tu debba aggiungere soldi.',
-      calc: ({ Lbe, p, servizio }) => `Deve coprire costi fissi ${eur(p.costiAnnui)} + rate ${eur(servizio)}, dopo aver tolto portali (${nf0.format(p.commPct)}%), property manager (${nf0.format(p.feePct)}%) e cedolare (${nf0.format(p.cedPct)}%): <strong>${eur(Lbe)}</strong>, circa ${nf0.format(Lbe / p.adr)} notti a ${eur(p.adr)}.`,
+      calc: ({ Lbe, p, servizio }) => `Deve coprire costi fissi ${eur(p.costiAnnui)} + rate ${eur(servizio)}, dopo aver tolto portali (media ${nf0.format(p.commPct)}% in base al mix dei canali), property manager (${nf0.format(p.feePct)}%) e cedolare (${nf0.format(p.cedPct)}%): <strong>${eur(Lbe)}</strong>, circa ${nf0.format(Lbe / p.adr)} notti a ${eur(p.adr)}.`,
       leggi: 'È il numero da tenere a mente con il property manager: sopra questa soglia la casa genera cassa, sotto la stai finanziando tu.',
     },
   };

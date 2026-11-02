@@ -1,10 +1,10 @@
 import {
   confrontoBenchmark, CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
-  registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt,
-} from './finance.js?v=20261104f';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261104f';
-import { createInfo } from './info.js?v=20261104f';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104f';
+  registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt, commDaQuote,
+} from './finance.js?v=20261104g';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261104g';
+import { createInfo } from './info.js?v=20261104g';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104g';
 
 // ---------- Stato ----------
 let data = null;
@@ -175,17 +175,26 @@ function costiAnnuiBudget() { return Math.round(data.budget.reduce((s, b) => s +
 function defaultSim(presetKey = '2026') {
   const pr = presets(data)[presetKey];
   return {
-    preset: presetKey, notti: pr.notti, adr: pr.adr, commPct: pr.commPct,
+    preset: presetKey, notti: pr.notti, adr: pr.adr, commPct: pr.commPct, quotaBooking: pr.quotaBooking, quotaAirbnb: pr.quotaAirbnb,
     feePct: Math.round(data.pm.fee * 1000) / 10, cedPct: data.fiscale.cedolare * 100, cedBase: data.fiscale.base,
     costiAnnui: costiAnnuiBudget(), crescitaRicavi: 0.02, inflazione: 0.02, rivalutazione: 0, anni: 15, extraAnnuo: 0,
   };
 }
 function simParams(src = ui.sim) {
-  return { ...src, crescitaRicavi: Number(src.crescitaRicavi), inflazione: Number(src.inflazione), rivalutazione: Number(src.rivalutazione) };
+  const p = { ...src, crescitaRicavi: Number(src.crescitaRicavi), inflazione: Number(src.inflazione), rivalutazione: Number(src.rivalutazione) };
+  // la commissione media dei portali deriva dal mix dei canali e dalle tariffe di ciascun portale
+  if (p.quotaBooking != null && p.quotaAirbnb != null) p.commPct = commDaQuote(data, Number(p.quotaBooking), Number(p.quotaAirbnb));
+  return p;
+}
+function assicuraQuote() {
+  if (!ui.sim || ui.sim.quotaBooking != null) return;
+  const pr = presets(data)['2026'];
+  if (pr?.quotaBooking != null) { ui.sim.quotaBooking = pr.quotaBooking; ui.sim.quotaAirbnb = pr.quotaAirbnb; saveUI(); }
 }
 
 // ---------- Render generale ----------
 function renderAll() {
+  assicuraQuote();
   $('#t-nome').textContent = `${data.immobile.nome}`;
   $('#t-zona').textContent = `${data.immobile.zona} · rogito ${new Date(data.immobile.rogito).toLocaleDateString('it-IT')}`;
   renderPanoramica();
@@ -269,7 +278,7 @@ function renderPanoramica() {
 
   renderRicaviChart(R);
   renderBenchmark(bench);
-  renderSplit(k);
+  renderSplit(k, R);
   renderPosizione(R, k, proj30, p, fine);
   renderTabellaMensile(R);
   renderAcquisto(k, reg);
@@ -326,19 +335,35 @@ function renderRicaviChart(R) {
   chart('c-ricavi', { data: { labels: mesi.map((m) => monthLabel(m)), datasets: ds }, options: baseOptions() });
 }
 
-function renderSplit(k) {
+// Lordo e commissioni per canale, dal dettaglio delle prenotazioni dei resoconti (solo mesi del registro)
+function datiCanali(R) {
+  const mesi = new Set(R.map((r) => r.mese)); const per = {};
+  for (const x of data.incassi) {
+    if (!mesi.has(x.mese)) continue;
+    for (const b of x.dettaglio || []) { const c = (per[b.canale] ||= { lordo: 0, comm: 0 }); c.lordo += Number(b.lordo || 0); c.comm += Number(b.commissioni || 0); }
+  }
+  return per;
+}
+
+function renderSplit(k, R) {
   const L = k.lordo;
-  $('#split-sub').textContent = `${k.mesi} ${k.mesi === 1 ? 'mese' : 'mesi'} · su ${eur(L)} lordi`;
+  $('#split-sub').textContent = `${k.mesi} ${k.mesi === 1 ? 'mese' : 'mesi'} · su ${eur(L)} lordi · % sul lordo`;
   if (!L) { $('#split').innerHTML = '<div class="empty">Nessun incasso registrato nel periodo.</div>'; return; }
+  // tariffe vere: ogni portale trattiene la sua percentuale; il PM prende il suo sul netto di ciascun soggiorno
+  const per = datiCanali(R); const Lc = Object.values(per).reduce((x, c) => x + c.lordo, 0);
+  const tariffe = Lc > L - 1 && Lc > 0 ? Object.entries(per).filter(([, c]) => c.lordo > 0).map(([n, c]) => `${esc(n)} ${pct(c.comm / c.lordo)}`).join(' · ') : '';
+  const netto = L - k.comm;
+  const subComm = tariffe ? `${tariffe}: ogni portale trattiene la sua percentuale` : 'media di tutti i portali (tariffe diverse per canale)';
+  const subFee = data.pm.base === 'lordo' ? '' : `${pct(netto ? k.fee / netto : 0)} del netto dopo i portali, calcolato su ogni soggiorno`;
   const rows = [
-    ['Commissioni portali', k.comm], ['Property manager', k.fee], ['Cedolare secca', k.ced], ['Costi operativi', k.costi],
+    ['Commissioni portali', k.comm, subComm], ['Property manager', k.fee, subFee], ['Cedolare secca', k.ced], ['Costi operativi', k.costi],
     ['Interessi e spese mutuo', k.interessi + k.speseMutuo], ['Quota capitale mutuo', k.capitale],
   ];
   const max = Math.max(L, ...rows.map((r) => r[1]), Math.abs(k.cfCum));
   const bar = (v, color) => `<div class="meter-track" style="background:var(--surface-2)"><div class="meter-fill" style="width:${Math.min(100, Math.abs(v) / max * 100)}%;background:${color}"></div></div>`;
-  $('#split').innerHTML = `<div class="stack" style="--gap:8px">${rows.map(([l, v]) => `
-    <div><div class="meter-row"><span>${l}</span><span class="num">${eur(v)} <small>· ${pct(v / L, 0)}</small></span></div>${bar(v, css('--s1'))}</div>`).join('')}
-    <div><div class="meter-row"><strong>Cash flow netto</strong><span class="num ${cls(k.cfCum)}"><strong>${eurS(k.cfCum)}</strong> <small>· ${pct(k.cfCum / L, 0)}</small></span></div>${bar(k.cfCum, k.cfCum >= 0 ? css('--good') : css('--bad'))}</div>
+  $('#split').innerHTML = `<div class="stack" style="--gap:8px">${rows.map(([l, v, sub]) => `
+    <div><div class="meter-row"><span>${l}</span><span class="num">${eur(v)} <small>· ${pct(v / L, 1)}</small></span></div>${sub ? `<div class="muted" style="font-size:var(--fs-xs);margin:-2px 0 4px">${sub}</div>` : ''}${bar(v, css('--s1'))}</div>`).join('')}
+    <div><div class="meter-row"><strong>Cash flow netto</strong><span class="num ${cls(k.cfCum)}"><strong>${eurS(k.cfCum)}</strong> <small>· ${pct(k.cfCum / L, 1)}</small></span></div>${bar(k.cfCum, k.cfCum >= 0 ? css('--good') : css('--bad'))}</div>
     <p class="muted" style="font-size:var(--fs-xs);margin:0">La quota capitale non è una perdita: riduce il debito e aumenta il tuo patrimonio netto.</p></div>`;
 }
 
@@ -636,8 +661,8 @@ function previewResoconto(rows, file, r, intro = '') {
       </div>
       <ul class="checks">${checks.map((c) => `<li class="lv-${c.livello}"><span class="ic" aria-hidden="true">${ic[c.livello]}</span><span><span class="sr-only">${{ ok: 'Ok', warn: 'Attenzione', info: 'Nota' }[c.livello]}: </span>${esc(maskText(c.testo))}</span></li>`).join('')}</ul>
       <details class="box"><summary>Prenotazioni (${p.book.length})</summary><p class="fine">I nomi degli ospiti non vengono salvati.</p>
-        <div class="table-wrap"><table><thead><tr><th>Canale</th><th>Arrivo</th><th>Partenza</th><th class="n">Notti</th><th class="n">Lordo</th><th class="n">Portali</th><th class="n">Fee PM</th></tr></thead><tbody>
-        ${p.book.map((b) => `<tr><td>${esc(b.canale)}</td><td>${b.check_in.split('-').reverse().join('/')}</td><td>${b.check_out.split('-').reverse().join('/')}</td><td class="n">${b.notti}</td><td class="n">${eur(b.lordo, 2)}</td><td class="n">${eur(b.commissioni, 2)}</td><td class="n">${b.fee != null ? eur(b.fee, 2) : '—'}</td></tr>`).join('')}
+        <div class="table-wrap"><table><thead><tr><th>Canale</th><th>Arrivo</th><th>Partenza</th><th class="n">Notti</th><th class="n">Lordo</th><th class="n">Portali (% lordo)</th><th class="n">Fee PM (% netto)</th></tr></thead><tbody>
+        ${p.book.map((b) => `<tr><td>${esc(b.canale)}</td><td>${b.check_in.split('-').reverse().join('/')}</td><td>${b.check_out.split('-').reverse().join('/')}</td><td class="n">${b.notti}</td><td class="n">${eur(b.lordo, 2)}</td><td class="n">${eur(b.commissioni, 2)} <small>${pct(b.lordo ? b.commissioni / b.lordo : 0)}</small></td><td class="n">${b.fee != null ? `${eur(b.fee, 2)} <small>${pct(b.lordo - b.commissioni ? b.fee / (b.lordo - b.commissioni) : 0)}</small>` : '—'}</td></tr>`).join('')}
         </tbody></table></div></details>
       <div class="actions"><button class="btn primary" id="rep-go" ${monthDiff(data.immobile.inizio_gestione, mese) < 0 ? 'disabled' : ''}>Importa come definitivo${warn ? ` (${warn} da verificare)` : ''}</button><button class="btn ghost" id="rep-cancel">Annulla</button></div></div>`;
     $('#rep-mese').onchange = (e) => { mese = e.target.value; render(); };
@@ -752,8 +777,9 @@ function previewXlsx(rows, file) {
 const SIM_FIELDS = [
   ['notti', 'Notti vendute / anno', 0, 365, 1, (v) => `${pct(v / 365, 0)} occupazione`],
   ['adr', 'Prezzo medio a notte (ADR, €)', 40, 350, 1, null],
-  ['commPct', 'Commissioni portali (% del lordo)', 0, 25, 0.1, null],
-  ['feePct', 'Fee property manager (%)', 0, 45, 0.5, null],
+  ['quotaBooking', 'Quota Booking (% del lordo)', 0, 100, 1, () => `trattiene ${pct(data.pm?.tariffe_portali?.Booking ?? 0)}`],
+  ['quotaAirbnb', 'Quota Airbnb (% del lordo)', 0, 100, 1, (v) => `trattiene ${pct(data.pm?.tariffe_portali?.Airbnb ?? 0)} · diretta ${nf0.format(Math.max(0, 100 - Number(ui.sim.quotaBooking) - v))}%`],
+  ['feePct', 'Fee property manager (% del netto dopo i portali)', 0, 45, 0.5, null],
   ['cedPct', 'Cedolare secca (%)', 0, 30, 1, null],
   ['costiAnnui', 'Costi fissi annui (€)', 0, 10000, 10, null],
   ['crescitaRicavi', 'Crescita ricavi annua (%)', -5, 8, 0.5, null, true],
@@ -767,7 +793,7 @@ function renderSimulatore() {
   const P = presets(data);
   $('#seg-preset').innerHTML = Object.entries(P).map(([k, v]) => `<button data-v="${k}" aria-pressed="${ui.sim.preset === k}">${v.label}</button>`).join('');
   seg($('#seg-preset'), ui.sim.preset, (k) => {
-    const pr = P[k]; Object.assign(ui.sim, { preset: k, notti: pr.notti, adr: pr.adr, commPct: pr.commPct }); saveUI(); renderSimulatore();
+    const pr = P[k]; Object.assign(ui.sim, { preset: k, notti: pr.notti, adr: pr.adr, commPct: pr.commPct, quotaBooking: pr.quotaBooking, quotaAirbnb: pr.quotaAirbnb }); saveUI(); renderSimulatore();
   });
   $('#preset-reale').onclick = () => {
     const reg = registro(data, fineAnalisi(), { stime: true });
@@ -775,8 +801,11 @@ function renderSimulatore() {
     if (!R.length) return toast('Nessun incasso reale registrato', true);
     const w = stagionalita(data.storico);
     const quota = R.reduce((s, r) => s + w[Number(r.mese.slice(5, 7)) - 1], 0);
-    const notti = R.reduce((s, r) => s + r.notti, 0); const L = R.reduce((s, r) => s + r.lordo, 0); const C = R.reduce((s, r) => s + r.comm, 0);
-    Object.assign(ui.sim, { preset: 'reale', notti: Math.round(notti / quota), adr: Math.round(L / (notti || 1)), commPct: Math.round(C / L * 1000) / 10 });
+    const notti = R.reduce((s, r) => s + r.notti, 0); const L = R.reduce((s, r) => s + r.lordo, 0);
+    // mix reale dei canali (sul lordo) dai resoconti con il dettaglio delle prenotazioni; altrimenti resta quello attuale
+    const per = datiCanali(R); const Lc = Object.values(per).reduce((x, c) => x + c.lordo, 0);
+    const mixReale = Lc > 0 ? { quotaBooking: Math.round((per.Booking?.lordo || 0) / Lc * 1000) / 10, quotaAirbnb: Math.round((per.Airbnb?.lordo || 0) / Lc * 1000) / 10 } : {};
+    Object.assign(ui.sim, { preset: 'reale', notti: Math.round(notti / quota), adr: Math.round(L / (notti || 1)), ...mixReale });
     saveUI(); renderSimulatore();
     if (R.length < 12) toast(`Annualizzato da ${R.length} ${R.length === 1 ? 'mese' : 'mesi'} con la stagionalità storica: prendilo come indicazione`);
   };
@@ -788,6 +817,7 @@ function renderSimulatore() {
       <input type="range" min="${min}" max="${max}" step="${step}" value="${v}" data-k="${key}" ${isPct ? 'data-pct' : ''} aria-label="${label}">
       <input type="number" min="${min}" max="${max}" step="${step}" value="${v}" data-k="${key}" ${isPct ? 'data-pct' : ''} aria-label="${label}"></div>`;
   }).join('') + `
+    <p class="muted" id="sim-comm" style="font-size:var(--fs-sm);margin:4px 0 10px"></p>
     <label class="f">Base cedolare<select id="sim-cedbase"><option value="lordo">lordo pagato dall'ospite</option><option value="netto_portali">netto commissioni portali</option></select></label>
     <details class="box"><summary>Dettaglio costi fissi dal budget</summary><dl class="kv" style="font-size:var(--fs-sm)">${data.budget.map((b) => `<dt>${esc(b.voce)}${b.certo ? '' : ' <span class="badge">stima</span>'}</dt><dd>${eur(b.annuo)}</dd>`).join('')}<dt class="tot">Totale</dt><dd class="tot">${eur(costiAnnuiBudget())}</dd></dl>
       <button class="btn small" type="button" id="sim-costi-reset" style="margin-top:8px">Usa il totale del budget</button></details>
@@ -798,8 +828,13 @@ function renderSimulatore() {
     const k = inp.dataset.k; let v = Number(inp.value); if (Number.isNaN(v)) return;
     $$(`#sim-inputs input[data-k="${k}"]`).forEach((o) => { if (o !== inp) o.value = inp.value; });
     if (inp.hasAttribute('data-pct')) v /= 100;
-    s[k] = v; if (['notti', 'adr', 'commPct'].includes(k)) { s.preset = 'custom'; $$('#seg-preset button').forEach((b) => b.setAttribute('aria-pressed', 'false')); }
+    if (k === 'quotaBooking' || k === 'quotaAirbnb') { // Booking + Airbnb non superano il 100% (il resto è prenotazione diretta)
+      const altro = Number(s[k === 'quotaBooking' ? 'quotaAirbnb' : 'quotaBooking']);
+      if (v + altro > 100) { v = 100 - altro; $$(`#sim-inputs input[data-k="${k}"]`).forEach((o) => { o.value = v; }); }
+    }
+    s[k] = v; if (['notti', 'adr', 'quotaBooking', 'quotaAirbnb'].includes(k)) { s.preset = 'custom'; $$('#seg-preset button').forEach((b) => b.setAttribute('aria-pressed', 'false')); }
     const f = SIM_FIELDS.find((x) => x[0] === k); if (f[5]) $(`#h-${k}`).textContent = f[5](v);
+    if (k === 'quotaBooking' && $('#h-quotaAirbnb')) $('#h-quotaAirbnb').textContent = SIM_FIELDS.find((x) => x[0] === 'quotaAirbnb')[5](Number(s.quotaAirbnb));
     saveUI(); updateSim();
   }));
   $('#sim-costi-reset').onclick = () => { s.costiAnnui = costiAnnuiBudget(); saveUI(); renderSimulatore(); };
@@ -814,6 +849,11 @@ function runScenario(p) {
 
 function updateSim() {
   const p = simParams();
+  const el = $('#sim-comm');
+  if (el) {
+    const tar = data.pm?.tariffe_portali || {}; const pmSuLordo = p.feePct * (1 - p.commPct / 100);
+    el.innerHTML = `Commissione media dei portali: <strong>${new Intl.NumberFormat('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(p.commPct)}% del lordo</strong> (Booking ${pct(tar.Booking ?? 0)} e Airbnb ${pct(tar.Airbnb ?? 0)} sulle rispettive quote). Il property manager prende il ${nf0.format(p.feePct)}% del netto di ogni soggiorno, cioè circa il ${new Intl.NumberFormat('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(pmSuLordo)}% del lordo: cambia con il mix dei canali.`;
+  }
   const sim = runScenario({ ...p, anni: 30 });
   const view = sim.slice(0, p.anni * 12);
   // primi 12 mesi CON la rata (dalla prima rata): un anno intero di rate, più il preammortamento una tantum.

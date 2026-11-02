@@ -247,6 +247,12 @@ export function stagionalita(storico) {
 
 const somma = (a) => a.reduce((x, y) => x + y, 0);
 
+/** Commissione media sui portali (% del lordo) dato il mix dei canali (quote in %): somma di quota × tariffa di ogni portale. */
+export function commDaQuote(data, quotaBooking, quotaAirbnb) {
+  const t = data.pm?.tariffe_portali || {};
+  return Math.round((quotaBooking * (t.Booking ?? 0) + quotaAirbnb * (t.Airbnb ?? 0)) * 10) / 10;
+}
+
 /** Scenari di partenza del simulatore: sono BENCHMARK della gestione precedente (proprietario dal 30/09/2026). */
 export function presets(data) {
   const st = data.storico;
@@ -255,19 +261,22 @@ export function presets(data) {
   const adrBase = (st['2024'].lordo_annuo + st['2025'].lordo_annuo) / (n24 + n25);
   // Commissioni dei portali: tariffe reali dei tuoi resoconti × mix canali dei mesi completi 2026 (fallback: rapporto storico)
   const mix = st['2026']?.mix_canali; const tar = data.pm?.tariffe_portali;
-  let commPct;
-  if (mix && tar) commPct = Math.round(Object.entries(mix).reduce((x, [k, q]) => x + q * (tar[k] ?? 0), 0) * 1000) / 10;
-  else commPct = Math.round(somma(st['2026'].commissioni) / (somma(st['2026'].lordo) || 1) * 1000) / 10;
+  let commPct; let quotaBooking; let quotaAirbnb;
+  if (mix && tar) {
+    quotaBooking = Math.round((mix.Booking ?? 0) * 1000) / 10; quotaAirbnb = Math.round((mix.Airbnb ?? 0) * 1000) / 10;
+    commPct = commDaQuote(data, quotaBooking, quotaAirbnb);
+  } else commPct = Math.round(somma(st['2026'].commissioni) / (somma(st['2026'].lordo) || 1) * 1000) / 10;
+  const mixP = { commPct, quotaBooking, quotaAirbnb };
   // 2026 = mesi completi (gestione precedente) + resto dell'anno come media 2024–25 degli stessi mesi, al prezzo medio 2024–25
   const nCompleti = somma(st['2026'].notti.slice(0, c26)); const lCompleti = somma(st['2026'].lordo.slice(0, c26));
   const nResto = (somma(st['2024'].notti.slice(c26)) + somma(st['2025'].notti.slice(c26))) / 2;
   const notti26 = nCompleti + nResto;
   const adr26 = (lCompleti + nResto * adrBase) / notti26;
   return {
-    '2024': { label: '2024', notti: n24, adr: Math.round(st['2024'].lordo_annuo / n24), commPct },
-    '2025': { label: '2025', notti: n25, adr: Math.round(st['2025'].lordo_annuo / n25), commPct },
-    '2026': { label: '2026 stimato', notti: Math.round(notti26), adr: Math.round(adr26), commPct },
-    media: { label: 'Media 24–25', notti: Math.round((n24 + n25) / 2), adr: Math.round(adrBase), commPct },
+    '2024': { label: '2024', notti: n24, adr: Math.round(st['2024'].lordo_annuo / n24), ...mixP },
+    '2025': { label: '2025', notti: n25, adr: Math.round(st['2025'].lordo_annuo / n25), ...mixP },
+    '2026': { label: '2026 stimato', notti: Math.round(notti26), adr: Math.round(adr26), ...mixP },
+    media: { label: 'Media 24–25', notti: Math.round((n24 + n25) / 2), adr: Math.round(adrBase), ...mixP },
   };
 }
 
