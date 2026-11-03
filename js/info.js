@@ -117,6 +117,12 @@ export function createInfo(fmt) {
       calc: ({ k }) => `Costi operativi ÷ lordo = <strong>${pct(k.lordo ? k.costi / k.lordo : 0)}</strong>.`,
       leggi: 'Nei mesi di bassa stagione sale molto, perché i costi restano mentre gli incassi calano.',
     },
+    copertura: {
+      t: 'Copertura della rata',
+      cosa: 'Una previsione: dice se le prenotazioni che hai inserito bastano a coprire la rata del mutuo, mese per mese, o quanto dovresti mettere tu. Non cambia nessuna metrica della dashboard.',
+      calc: () => 'Per ogni mese: lordo prenotato − commissione del canale − fee del PM = quello che ti arriva. Lo confronto con la rata che esce il mese dopo (il PM paga dopo la fine del mese). Opzioni: includere i costi fissi, accantonare la cedolare, aggiungere l\'IVA sulla fee del PM.',
+      leggi: 'Barra piena = rata coperta. "Mancano X €" è il netto che serve ancora; accanto trovi il lordo equivalente e le notti al prezzo medio già prenotato nel mese (o al prezzo del benchmark se non ci sono prenotazioni). È una stima: i prezzi possono cambiare, le prenotazioni annullarsi, e le prenotazioni dei mesi lontani sono sempre poche.',
+    },
     bench: {
       t: 'Rispetto al benchmark',
       cosa: 'Confronta i mesi della tua gestione con gli stessi mesi degli anni precedenti (gestione del venditore), per capire se la casa rende più o meno di prima. Il benchmark non è un obiettivo: è un termine di paragone.',

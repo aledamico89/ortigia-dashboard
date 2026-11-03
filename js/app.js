@@ -1,10 +1,10 @@
 import {
   confrontoBenchmark, CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
-  registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt, commDaQuote,
-} from './finance.js?v=20261104i';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261104i';
-import { createInfo } from './info.js?v=20261104i';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104i';
+  registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt, commDaQuote, coperturaRata, nettoPrenotazione, nottiTra,
+} from './finance.js?v=20261104j';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261104j';
+import { createInfo } from './info.js?v=20261104j';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104j';
 
 // ---------- Stato ----------
 let data = null;
@@ -13,6 +13,7 @@ const UI_KEY = 'ortigia.ui.v1';
 const ui = Object.assign({
   view: 'panoramica', valore: 'nominale', stime: true, attr: 'check_in',
   refs: { 2024: false, 2025: true, 2026: true }, cmp: {}, theme: 'auto', sim: null, privacy: false,
+  cop: { sfas: 1, ced: false, costi: false, iva: false },
 }, (() => { try { return JSON.parse(localStorage.getItem(UI_KEY)) || {}; } catch { return {}; } })());
 const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* ignore */ } };
 const charts = {};
@@ -94,7 +95,7 @@ async function boot() {
 }
 
 function migrate() {
-  data.spese ??= []; data.incassi ??= []; data.valutazioni ??= []; data.budget ??= [];
+  data.spese ??= []; data.prenotazioni ??= []; data.incassi ??= []; data.valutazioni ??= []; data.budget ??= [];
   data.simulatore ??= {};
 }
 
@@ -198,7 +199,9 @@ function renderAll() {
   $('#t-nome').textContent = `${data.immobile.nome}`;
   $('#t-zona').textContent = `${data.immobile.zona} · rogito ${new Date(data.immobile.rogito).toLocaleDateString('it-IT')}`;
   renderPanoramica();
+  renderCopertura();
   renderRegistro();
+  renderPrenotazioni();
   renderSimulatore();
   renderMercato();
   renderGetquin();
@@ -444,6 +447,51 @@ function renderAcquisto(k, reg) {
   ].map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('') + (m.note ? `<dt class="fine-row">${esc(maskText(m.note))}</dt>` : '');
 }
 
+// ---------- COPERTURA DELLA RATA (previsione dalle prenotazioni; non tocca registro() né kpi()) ----------
+function renderCopertura() {
+  const c = ui.cop = { sfas: 1, ced: false, costi: false, iva: false, ...ui.cop };
+  const R = coperturaRata(data, { da: currentMonth(), sfasamento: c.sfas, ced: c.ced, costi: c.costi, iva: c.iva });
+  const prenotate = (data.prenotazioni || []).some((b) => b.stato !== 'cancellata');
+  const opt = (k, l) => `<label class="chip ${c[k] ? '' : 'off'}"><input type="checkbox" data-cop="${k}" ${c[k] ? 'checked' : ''}><span style="color:var(--ink-2)">${l}</span></label>`;
+  const toolbar = `<div class="toolbar" style="margin:0 0 12px"><span class="lbl">Il bonifico del PM arriva</span>
+    <div class="seg" id="seg-sfas"><button data-v="1" aria-pressed="${c.sfas === 1}">il mese dopo</button><button data-v="0" aria-pressed="${c.sfas === 0}">lo stesso mese</button></div>
+    ${opt('costi', 'includi costi fissi')}${opt('ced', 'accantona la cedolare')}${opt('iva', 'IVA 22% sulla fee PM')}</div>`;
+  const con = R.righe.filter((r) => r.fabbisogno > 0);
+  let sommario;
+  if (!prenotate && !con.some((r) => r.fonte !== 'vuoto')) {
+    sommario = `<p class="muted" style="margin:0 0 12px">Nessuna prenotazione inserita. Aggiungile in <em>Registro → Prenotazioni in arrivo</em> per vedere se coprono la rata.</p>`;
+  } else if (!con.length) {
+    sommario = `<p style="margin:0 0 12px">Nessuna rata da coprire nel periodo.</p>`;
+  } else {
+    const p = con[0]; const ok = p.manca === 0;
+    const altri = con.slice(1);
+    const coperti = altri.filter((r) => r.manca === 0).length;
+    const parziali = altri.filter((r) => r.manca > 0 && r.fonte !== 'vuoto');
+    const vuoti = altri.filter((r) => r.fonte === 'vuoto').length;
+    const parti = [coperti ? `${coperti} ${coperti === 1 ? 'coperto' : 'coperti'}` : '', parziali.length ? `${parziali.length} con prenotazioni ma ancora corti (mancano in tutto ${eur(parziali.reduce((x, r) => x + r.manca, 0))})` : '', vuoti ? `${vuoti} ancora senza prenotazioni` : ''].filter(Boolean);
+    const resto = parti.length ? ` Mesi successivi: ${parti.join(', ')}.` : '';
+    sommario = `<p style="margin:0 0 12px;font-size:var(--fs-lg)">${ok ? `<strong>La rata di ${monthLabel(p.pagamento, true)} (${eur(p.fabbisogno)}) è coperta</strong>, con ${eur(p.avanza)} di margine.` : `<strong>Mancano ${eur(p.manca)}</strong> per la rata di ${monthLabel(p.pagamento, true)} (${eur(p.fabbisogno)}).`}${resto}</p>`;
+  }
+  const righe = R.righe.map((r) => {
+    const titolo = `Soggiorni di ${monthLabel(r.mese, true)}${r.fabbisogno > 0 ? ` → rata di ${monthLabel(r.pagamento, true)}` : ''}`;
+    const det = r.fonte === 'resoconto' ? 'resoconto del PM già importato'
+      : r.fonte === 'prenotazioni' ? `${r.n} ${r.n === 1 ? 'prenotazione' : 'prenotazioni'} · ${nf0.format(r.notti)} notti · ${eur(r.lordo)} lordi → ${eur(r.netto)} netti per te`
+        : 'nessuna prenotazione inserita';
+    if (!(r.fabbisogno > 0)) return `<div><div class="meter-row"><span>${titolo}</span><span class="num muted">nessuna rata</span></div><div class="muted" style="font-size:var(--fs-xs)">${det} · nel mese del bonifico non c'è nessuna rata da pagare</div></div>`;
+    const cov = r.copertura ?? 0; const ok = r.manca === 0;
+    const colore = ok ? css('--good') : cov >= 0.5 ? css('--warn') : css('--bad');
+    const esito = ok ? `Rata coperta, avanzano ${eur(r.avanza)}.`
+      : `Mancano <strong>${eur(r.manca)}</strong> netti${r.lordoMancante ? `, cioè circa ${eur(r.lordoMancante)} lordi${r.nottiEq && r.adr ? ` (≈ ${nf0.format(r.nottiEq)} notti a ${eur(r.adr)})` : ''}` : ''}.`;
+    return `<div><div class="meter-row"><span>${titolo}</span><span class="num">${eur(r.netto)} / ${eur(r.fabbisogno)} <small>· ${pct(cov, 0)}</small></span></div>
+      <div class="meter-track" style="background:var(--surface-2)"><div class="meter-fill" style="width:${Math.min(100, cov * 100)}%;background:${colore}"></div></div>
+      <div class="muted" style="font-size:var(--fs-xs);margin-top:4px">${det}. ${esito}</div></div>`;
+  }).join('');
+  $('#cop-body').innerHTML = `${toolbar}${sommario}<div class="stack" style="--gap:14px">${righe}</div>
+    <p class="muted" style="font-size:var(--fs-xs);margin:12px 0 0">Il confronto è in euro, non in notti: con prezzi più alti bastano meno notti. Ogni prenotazione conta per il mese di check-out.</p>`;
+  seg($('#seg-sfas'), String(c.sfas), (v) => { ui.cop.sfas = Number(v); saveUI(); renderCopertura(); });
+  $$('#cop-body input[data-cop]').forEach((i) => i.addEventListener('change', () => { ui.cop[i.dataset.cop] = i.checked; saveUI(); renderCopertura(); }));
+}
+
 // ---------- REGISTRO ----------
 function renderRegistro() {
   // Incassi
@@ -511,6 +559,44 @@ async function uploadFile(file, folder) {
   const safe = file.name.replace(/[^\w.\- ]+/g, '_');
   return store.upload(`allegati/${folder}/${Date.now()}-${safe}`, file);
 }
+
+function renderPrenotazioni() {
+  const lista = (data.prenotazioni || []).slice().sort((x, y) => x.check_in.localeCompare(y.check_in));
+  const conResoconto = new Set(data.incassi.map((x) => x.mese));
+  $('#t-pren').innerHTML = lista.length ? `<thead><tr><th>Check-in</th><th>Check-out</th><th class="n">Notti</th><th>Canale</th><th class="n">Lordo</th><th class="n">Netto per te</th><th>Stato</th><th></th></tr></thead><tbody>${lista.map((b) => {
+    const x = nettoPrenotazione(data, b, { iva: ui.cop?.iva }); const annullata = b.stato === 'cancellata'; const nelResoconto = conResoconto.has(b.check_out.slice(0, 7));
+    const d = (v) => v.split('-').reverse().join('/');
+    return `<tr${annullata ? ' style="opacity:.55"' : ''}><td>${d(b.check_in)}</td><td>${d(b.check_out)}</td><td class="n">${nottiTra(b.check_in, b.check_out)}</td><td>${esc(b.canale)}</td>
+      <td class="n">${eur(b.lordo, 2)}</td><td class="n">${annullata ? '—' : `${eur(x.netto, 2)}<span class="est" title="stima: lordo − commissione canale − fee PM">ᶜ</span>`}</td>
+      <td><span class="badge ${annullata ? 'bad' : 'ok'}">${esc(b.stato || 'confermata')}</span>${nelResoconto && !annullata ? ' <span class="badge" title="Il mese ha già il resoconto del PM: conta quello, non questa prenotazione">nel resoconto</span>' : ''}</td>
+      <td style="white-space:nowrap"><button class="btn small ghost" data-edit-pren="${esc(b.id)}">Modifica</button><button class="btn small ghost danger" data-del-pren="${esc(b.id)}">Elimina</button></td></tr>`
+      + (b.nota ? `<tr><td></td><td colspan="7" class="muted" style="font-size:var(--fs-xs);border-top:0">${esc(b.nota)}</td></tr>` : '');
+  }).join('')}</tbody>` : '<tbody><tr><td class="empty">Nessuna prenotazione inserita.</td></tr></tbody>';
+  $$('[data-edit-pren]').forEach((b) => b.onclick = () => fillPren(data.prenotazioni.find((x) => x.id === b.dataset.editPren)));
+  $$('[data-del-pren]').forEach((b) => b.onclick = async () => {
+    if (!confirm('Eliminare questa prenotazione?')) return;
+    data.prenotazioni = data.prenotazioni.filter((x) => x.id !== b.dataset.delPren);
+    await persist('Elimina prenotazione');
+  });
+}
+function fillPren(b) {
+  const f = $('#f-pren');
+  f.canale.value = b.canale; f.check_in.value = b.check_in; f.check_out.value = b.check_out; f.lordo.value = b.lordo;
+  f.stato.value = b.stato || 'confermata'; f.nota.value = b.nota || ''; f.dataset.id = b.id;
+  $('#pren-form-title').textContent = 'Modifica prenotazione';
+  f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+$('#f-pren').addEventListener('reset', (e) => { delete e.target.dataset.id; $('#pren-form-title').textContent = 'Nuova prenotazione'; });
+$('#f-pren').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target; const fd = new FormData(f);
+  const ci = fd.get('check_in'); const co = fd.get('check_out');
+  if (!(co > ci)) return toast('Il check-out deve essere dopo il check-in', true);
+  const id = f.dataset.id || `p${Date.now().toString(36)}`;
+  const rec = { id, canale: fd.get('canale'), check_in: ci, check_out: co, lordo: Math.round(Number(fd.get('lordo')) * 100) / 100, stato: fd.get('stato'), nota: String(fd.get('nota') || '') };
+  data.prenotazioni = data.prenotazioni.filter((x) => x.id !== id).concat(rec);
+  try { await persist(`Prenotazione ${ci} → ${co}`); f.reset(); } catch (err) { if (err?.message) toast(err.message, true); }
+});
 
 function fillIncasso(x) {
   const f = $('#f-incasso');

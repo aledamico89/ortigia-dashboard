@@ -14,10 +14,10 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Ortigia Investimento</title>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-  <link rel="stylesheet" href="css/style.css?v=20261104i">
+  <link rel="stylesheet" href="css/style.css?v=20261104j">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-  <script type="module" src="js/app.js?v=20261104i"></script>
+  <script type="module" src="js/app.js?v=20261104j"></script>
 </head>
 <body>
 <header class="top">
@@ -89,6 +89,11 @@
     </div>
 
     <div class="grid kpis eight mt" id="kpi-grid"></div>
+
+    <div class="card mt" id="card-cop">
+      <div class="card-head"><h2>Copertura della rata</h2><button type="button" class="info" data-info="copertura" data-ctx="panoramica" aria-label="Spiegazione: Copertura della rata" aria-expanded="false" aria-controls="info-pop">?</button><span class="sub">previsione dalle prenotazioni inserite · non modifica le metriche</span></div>
+      <div id="cop-body"></div>
+    </div>
 
     <div class="grid g2 mt">
       <div class="card">
@@ -182,6 +187,30 @@
     <div class="card mt">
       <div class="table-wrap"><table id="t-incassi"></table></div>
     </div>
+
+    <div class="section-title"><h2>Prenotazioni in arrivo</h2><span class="sub">inseriscile a mano dal gestionale: servono solo a prevedere se coprono la rata, non entrano nelle metriche</span></div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-head"><h3 id="pren-form-title">Nuova prenotazione</h3></div>
+        <form id="f-pren">
+          <div class="row">
+            <label class="f">Canale<select name="canale"><option>Booking</option><option>Airbnb</option><option>Diretta</option><option>Altro</option></select></label>
+            <label class="f">Check-in<input type="date" name="check_in" required></label>
+            <label class="f">Check-out<input type="date" name="check_out" required></label>
+            <label class="f">Importo lordo totale (€)<input type="number" step="0.01" min="0" name="lordo" required></label>
+            <label class="f">Stato<select name="stato"><option value="confermata">confermata</option><option value="cancellata">cancellata</option></select></label>
+            <label class="f wide">Nota (senza nome dell'ospite)<input type="text" name="nota"></label>
+          </div>
+          <div class="actions"><button class="btn primary" type="submit">Salva prenotazione</button><button class="btn ghost" type="reset">Annulla</button></div>
+        </form>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Come funziona</h3></div>
+        <p class="prose">Inserisci l'importo lordo che vedi nel gestionale (quello pagato dall'ospite). La dashboard stima quanto resta a te togliendo la commissione del canale e il 30% del PM, e lo confronta con la rata del mutuo.</p>
+        <p class="prose">Ogni prenotazione conta per il mese di <strong>check-out</strong>, come nel resoconto del PM. Quando importi il resoconto di quel mese, i numeri veri sostituiscono quelli inseriti qui.</p>
+      </div>
+    </div>
+    <div class="card mt"><div class="table-wrap"><table id="t-pren"></table></div></div>
 
     <div class="section-title"><h2>Spese e bollette</h2><span class="sub">ogni importo viene ripartito sui mesi di competenza</span></div>
     <div class="grid g2">

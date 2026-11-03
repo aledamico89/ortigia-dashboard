@@ -397,3 +397,72 @@ export function confrontoBenchmark(data, righe) {
   }
   return { righe: righeC, totale, nMesi: righeC.length };
 }
+
+
+// ---------- Copertura della rata (previsione, NON entra nelle metriche) ----------
+const IVA = 0.22;
+export const nottiTra = (da, a) => Math.max(0, Math.round((Date.parse(a) - Date.parse(da)) / 86400000));
+
+/** Quanto resta a te da una prenotazione inserita a mano: lordo − portale del canale − fee PM (− cedolare, se richiesta). */
+export function nettoPrenotazione(data, b, { ced = false, iva = false } = {}) {
+  const lordo = Number(b.lordo || 0);
+  const comm = r2(lordo * (data.pm?.tariffe_portali?.[b.canale] ?? 0));
+  const baseFee = data.pm.base === 'lordo' ? lordo : lordo - comm;
+  const fee = r2(baseFee * data.pm.fee * (iva ? 1 + IVA : 1));
+  const tasse = ced ? cedolare(data, lordo, comm) : 0;
+  return { lordo, comm, fee, ced: tasse, netto: r2(lordo - comm - fee - tasse) };
+}
+
+/**
+ * Per ogni mese di soggiorno (a partire da `da`) confronta il netto delle prenotazioni confermate con la rata che il bonifico del PM
+ * deve coprire (quella del mese dopo, o dello stesso mese se sfasamento = 0). Le prenotazioni sono attribuite al mese di check-out,
+ * come nel resoconto del PM. Dove esiste il resoconto del mese, vale quello e le prenotazioni inserite a mano vengono ignorate.
+ */
+export function coperturaRata(data, { da, mesi = 6, sfasamento = 1, ced = false, costi = false, iva = false }) {
+  const extra = data.spese.filter((s) => s.categoria === 'rimborso_anticipato').map((s) => ({ mese: s.data.slice(0, 7), importo: Number(s.importo) }));
+  const piano = pianoMutuo(data.mutuo, extra);
+  const incassi = Object.fromEntries(data.incassi.map((x) => [x.mese, x]));
+  const perMese = {};
+  for (const b of data.prenotazioni || []) {
+    if (b.stato === 'cancellata' || !b.check_in || !b.check_out) continue;
+    (perMese[b.check_out.slice(0, 7)] ||= []).push(b);
+  }
+  const ultimo = Object.keys(perMese).sort().pop();
+  const n = Math.min(12, Math.max(mesi, ultimo ? monthDiff(da, ultimo) + 1 : 0));
+  let rif = null; try { rif = presets(data)['2026']; } catch { /* storico assente */ }
+  const cp = (rif?.commPct ?? 0) / 100; const feeEff = data.pm.fee * (iva ? 1 + IVA : 1);
+  const kDef = (1 - cp) * (1 - feeEff) - (ced ? (data.fiscale.base === 'netto_portali' ? 1 - cp : 1) * data.fiscale.cedolare : 0);
+  const righe = [];
+  for (let k = 0; k < n; k++) {
+    const mese = addMonths(da, k); const pag = addMonths(mese, sfasamento);
+    const p = piano.get(pag); const rata = p ? r2(p.rata + p.spese + p.preamm) : 0;
+    let costiMese = 0;
+    if (costi) for (const b of data.budget) {
+      if (b.dal && monthDiff(b.dal, pag) < 0) continue;
+      if (b.al && monthDiff(pag, b.al) < 0) continue;
+      costiMese += Number(b.annuo || 0) / 12;
+    }
+    const inc = incassi[mese]; const lista = perMese[mese] || [];
+    let lordo = 0; let netto = 0; let nott = 0; let fonte = 'vuoto';
+    if (inc) {
+      fonte = 'resoconto'; lordo = Number(inc.lordo || 0); nott = Number(inc.notti || 0);
+      const comm = Number(inc.commissioni || 0);
+      const dovuto = inc.dovuto_pm != null && inc.dovuto_pm !== '' ? Number(inc.dovuto_pm) : lordo - comm - (inc.fee_pm != null && inc.fee_pm !== '' ? Number(inc.fee_pm) : feePM(data, lordo, comm)) - Number(inc.spese_pm || 0);
+      netto = dovuto - (ced ? cedolare(data, lordo, comm) : 0);
+    } else if (lista.length) {
+      fonte = 'prenotazioni';
+      for (const b of lista) { const x = nettoPrenotazione(data, b, { ced, iva }); lordo += x.lordo; netto += x.netto; nott += nottiTra(b.check_in, b.check_out); }
+    }
+    const fabbisogno = r2(rata + costiMese);
+    const manca = Math.max(0, r2(fabbisogno - netto));
+    const kNetto = lordo > 0 ? netto / lordo : kDef;
+    const adr = nott > 0 && lordo > 0 ? lordo / nott : rif?.adr ?? null;
+    const lordoMancante = kNetto > 0 ? manca / kNetto : null;
+    righe.push({
+      mese, pagamento: pag, fonte, n: lista.length, notti: nott, lordo: r2(lordo), netto: r2(netto), rata, costi: r2(costiMese), fabbisogno,
+      copertura: fabbisogno > 0 ? netto / fabbisogno : null, manca, avanza: Math.max(0, r2(netto - fabbisogno)),
+      lordoMancante: lordoMancante == null ? null : Math.round(lordoMancante), nottiEq: lordoMancante != null && adr ? Math.ceil(lordoMancante / adr) : null, adr,
+    });
+  }
+  return { righe, totaleManca: r2(righe.reduce((s, r) => s + (r.fabbisogno > 0 ? r.manca : 0), 0)) };
+}
