@@ -1,10 +1,10 @@
 import {
   confrontoBenchmark, CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt, commDaQuote, coperturaRata, nettoPrenotazione, nottiTra,
-} from './finance.js?v=20261104j';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261104j';
-import { createInfo } from './info.js?v=20261104j';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104j';
+} from './finance.js?v=20261104k';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261104k';
+import { createInfo } from './info.js?v=20261104k';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104k';
 
 // ---------- Stato ----------
 let data = null;
@@ -13,7 +13,7 @@ const UI_KEY = 'ortigia.ui.v1';
 const ui = Object.assign({
   view: 'panoramica', valore: 'nominale', stime: true, attr: 'check_in',
   refs: { 2024: false, 2025: true, 2026: true }, cmp: {}, theme: 'auto', sim: null, privacy: false,
-  cop: { sfas: 1, ced: false, costi: false, iva: false },
+  cop: { sfas: 1, ced: false, costi: false, iva: false, bacino: true },
 }, (() => { try { return JSON.parse(localStorage.getItem(UI_KEY)) || {}; } catch { return {}; } })());
 const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* ignore */ } };
 const charts = {};
@@ -169,6 +169,13 @@ function baseOptions(extra = {}) {
     ...extra,
   };
 }
+/** Colore con trasparenza: i colori dei grafici arrivano come #rrggbb o rgb(). */
+function alpha(c, a) {
+  const h = /^#([0-9a-f]{6})$/i.exec(c);
+  if (h) { const n = parseInt(h[1], 16); return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; }
+  const r = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(c);
+  return r ? `rgba(${r[1]}, ${r[2]}, ${r[3]}, ${a})` : c;
+}
 const legendHTML = (items) => items.map(([c, l, dashed]) => `<span><i style="background:${dashed ? 'transparent' : c};${dashed ? `border:2px dashed ${c};height:0;width:12px;border-radius:0;vertical-align:3px` : ''}"></i>${esc(l)}</span>`).join('');
 
 // ---------- Simulatore: parametri ----------
@@ -316,8 +323,13 @@ function renderRicaviChart(R) {
   const inizio = data.immobile.inizio_gestione;
   const fine = R.length ? R[R.length - 1].mese : inizio;
   // anno solare: da gennaio a dicembre, a prescindere dal mese in cui è iniziata la gestione
-  const anni = []; for (let y = Number(inizio.slice(0, 4)); y <= Number(fine.slice(0, 4)); y++) anni.push(String(y));
-  const anno = anni.includes(String(ui.annoRicavi)) ? String(ui.annoRicavi) : anni[anni.length - 1];
+  // lordo previsto dalle prenotazioni inserite a mano, per mese di check-out
+  const prev = {};
+  for (const b of data.prenotazioni || []) if (b.stato !== 'cancellata' && b.check_out) prev[b.check_out.slice(0, 7)] = (prev[b.check_out.slice(0, 7)] || 0) + Number(b.lordo || 0);
+  const ultimoPrev = Object.keys(prev).sort().pop();
+  const annoMax = Math.max(Number(fine.slice(0, 4)), ultimoPrev ? Number(ultimoPrev.slice(0, 4)) : 0);
+  const anni = []; for (let y = Number(inizio.slice(0, 4)); y <= annoMax; y++) anni.push(String(y));
+  const anno = anni.includes(String(ui.annoRicavi)) ? String(ui.annoRicavi) : anni.includes(fine.slice(0, 4)) ? fine.slice(0, 4) : anni[anni.length - 1];
   const mesi = monthsBetween(`${anno}-01`, `${anno}-12`);
   $('#ric-sub').textContent = `${anno} · i tuoi incassi reali vs benchmark della gestione precedente`;
   $('#ric-anno').style.display = anni.length > 1 ? 'inline-flex' : 'none';
@@ -332,16 +344,28 @@ function renderRicaviChart(R) {
   };
   $('#ref-chips').innerHTML = '<span class="lbl">Benchmark gestione precedente</span>' + Object.entries(refSeries).map(([y, s]) => `<label class="chip ${ui.refs[y] ? '' : 'off'}" style="color:${s.color}"><input type="checkbox" data-y="${y}" ${ui.refs[y] ? 'checked' : ''}><span class="sw"></span><span style="color:var(--ink-2)">${y}</span></label>`).join('');
   $$('#ref-chips input').forEach((i) => i.addEventListener('change', () => { ui.refs[i.dataset.y] = i.checked; saveUI(); renderRicaviChart(R); }));
+  // una sola serie di barre: piena se il mese è rendicontato dal PM, trasparente con bordo tratteggiato se è solo una previsione
+  const rend = mesi.map((m) => !!byM[m]?.inc);
+  const s1 = css('--s1');
   const ds = [{
-    type: 'bar', label: 'Reale', data: mesi.map((m) => (byM[m]?.inc ? byM[m].lordo : null)),
-    backgroundColor: css('--s1'), borderRadius: 4, borderSkipped: 'start', maxBarThickness: 24, order: 2,
+    type: 'bar', label: 'Reale', data: mesi.map((m, i) => (rend[i] ? byM[m].lordo : prev[m] ? Math.round(prev[m] * 100) / 100 : null)),
+    backgroundColor: rend.map((r) => (r ? s1 : alpha(s1, 0.28))), borderColor: s1, borderWidth: rend.map((r) => (r ? 0 : 2)), borderDash: [5, 4],
+    borderRadius: 4, borderSkipped: 'start', maxBarThickness: 24, order: 2,
   }];
   for (const [y, s] of Object.entries(refSeries)) {
     if (!ui.refs[y]) continue;
     ds.push({ type: 'line', label: s.label, data: mesi.map((m) => { const v = s.val(Number(m.slice(5, 7)) - 1); return v ? Math.round(v) : null; }),
       borderColor: s.color, backgroundColor: s.color, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, tension: 0.3, spanGaps: false, order: 1 });
   }
-  chart('c-ricavi', { data: { labels: mesi.map((m) => monthLabel(m)), datasets: ds }, options: baseOptions() });
+  const opt = baseOptions();
+  opt.plugins.tooltip.callbacks.label = (c) => {
+    if (c.datasetIndex !== 0) return ` ${c.dataset.label}: ${c.raw == null ? '—' : eur(c.raw)}`;
+    const m = mesi[c.dataIndex];
+    if (!rend[c.dataIndex]) return ` Previsto dalle prenotazioni (non ancora rendicontato): ${eur(c.raw)}`;
+    return ` Reale (resoconto PM): ${eur(c.raw)}${prev[m] ? ` · prenotazioni inserite ${eur(prev[m])} (${eurS(c.raw - prev[m])})` : ''}`;
+  };
+  chart('c-ricavi', { data: { labels: mesi.map((m) => monthLabel(m)), datasets: ds }, options: opt });
+  $('#ric-legend').innerHTML = legendHTML([[s1, 'Rendicontato (resoconto PM)'], [alpha(s1, 0.28), 'Previsto dalle prenotazioni inserite']]);
 }
 
 // Lordo e commissioni per canale, dal dettaglio delle prenotazioni dei resoconti (solo mesi del registro)
@@ -449,13 +473,14 @@ function renderAcquisto(k, reg) {
 
 // ---------- COPERTURA DELLA RATA (previsione dalle prenotazioni; non tocca registro() né kpi()) ----------
 function renderCopertura() {
-  const c = ui.cop = { sfas: 1, ced: false, costi: false, iva: false, ...ui.cop };
-  const R = coperturaRata(data, { da: currentMonth(), sfasamento: c.sfas, ced: c.ced, costi: c.costi, iva: c.iva });
+  const c = ui.cop = { sfas: 1, ced: false, costi: false, iva: false, bacino: true, ...ui.cop };
+  // si mostra dal mese prima di quello corrente (di cui il PM sta per pagare il resoconto); il bacino parte però dall'inizio gestione
+  const R = coperturaRata(data, { visibileDa: addMonths(currentMonth(), -1), sfasamento: c.sfas, ced: c.ced, costi: c.costi, iva: c.iva, bacino: c.bacino });
   const prenotate = (data.prenotazioni || []).some((b) => b.stato !== 'cancellata');
   const opt = (k, l) => `<label class="chip ${c[k] ? '' : 'off'}"><input type="checkbox" data-cop="${k}" ${c[k] ? 'checked' : ''}><span style="color:var(--ink-2)">${l}</span></label>`;
   const toolbar = `<div class="toolbar" style="margin:0 0 12px"><span class="lbl">Il bonifico del PM arriva</span>
     <div class="seg" id="seg-sfas"><button data-v="1" aria-pressed="${c.sfas === 1}">il mese dopo</button><button data-v="0" aria-pressed="${c.sfas === 0}">lo stesso mese</button></div>
-    ${opt('costi', 'includi costi fissi')}${opt('ced', 'accantona la cedolare')}${opt('iva', 'IVA 22% sulla fee PM')}</div>`;
+    ${opt('bacino', 'usa il netto avanzato nei mesi prima')}${opt('costi', 'includi costi fissi')}${opt('ced', 'accantona la cedolare')}${opt('iva', 'IVA 22% sulla fee PM')}</div>`;
   const con = R.righe.filter((r) => r.fabbisogno > 0);
   let sommario;
   if (!prenotate && !con.some((r) => r.fonte !== 'vuoto')) {
@@ -467,8 +492,8 @@ function renderCopertura() {
     const altri = con.slice(1);
     const coperti = altri.filter((r) => r.manca === 0).length;
     const parziali = altri.filter((r) => r.manca > 0 && r.fonte !== 'vuoto');
-    const vuoti = altri.filter((r) => r.fonte === 'vuoto').length;
-    const parti = [coperti ? `${coperti} ${coperti === 1 ? 'coperto' : 'coperti'}` : '', parziali.length ? `${parziali.length} con prenotazioni ma ancora corti (mancano in tutto ${eur(parziali.reduce((x, r) => x + r.manca, 0))})` : '', vuoti ? `${vuoti} ancora senza prenotazioni` : ''].filter(Boolean);
+    const vuoti = altri.filter((r) => r.manca > 0 && r.fonte === 'vuoto').length;
+    const parti = [coperti ? `${coperti} ${coperti === 1 ? 'coperto' : 'coperti'}` : '', parziali.length ? `${parziali.length} con prenotazioni ma ancora corti (mancherebbero in tutto ${eur(parziali.reduce((x, r) => x + r.manca, 0))})` : '', vuoti ? `${vuoti} ancora senza prenotazioni` : ''].filter(Boolean);
     const resto = parti.length ? ` Mesi successivi: ${parti.join(', ')}.` : '';
     sommario = `<p style="margin:0 0 12px;font-size:var(--fs-lg)">${ok ? `<strong>La rata di ${monthLabel(p.pagamento, true)} (${eur(p.fabbisogno)}) è coperta</strong>, con ${eur(p.avanza)} di margine.` : `<strong>Mancano ${eur(p.manca)}</strong> per la rata di ${monthLabel(p.pagamento, true)} (${eur(p.fabbisogno)}).`}${resto}</p>`;
   }
@@ -477,17 +502,18 @@ function renderCopertura() {
     const det = r.fonte === 'resoconto' ? 'resoconto del PM già importato'
       : r.fonte === 'prenotazioni' ? `${r.n} ${r.n === 1 ? 'prenotazione' : 'prenotazioni'} · ${nf0.format(r.notti)} notti · ${eur(r.lordo)} lordi → ${eur(r.netto)} netti per te`
         : 'nessuna prenotazione inserita';
-    if (!(r.fabbisogno > 0)) return `<div><div class="meter-row"><span>${titolo}</span><span class="num muted">nessuna rata</span></div><div class="muted" style="font-size:var(--fs-xs)">${det} · nel mese del bonifico non c'è nessuna rata da pagare</div></div>`;
+    const bac = r.riporto > 0 ? ` Più ${eur(r.riporto)} avanzati dai mesi precedenti.` : '';
+    if (!(r.fabbisogno > 0)) return `<div><div class="meter-row"><span>${titolo}</span><span class="num muted">nessuna rata</span></div><div class="muted" style="font-size:var(--fs-xs)">${det}. Nel mese del bonifico non c'è nessuna rata da pagare: ${eur(r.netto + r.riporto)} restano a disposizione per i mesi dopo.</div></div>`;
     const cov = r.copertura ?? 0; const ok = r.manca === 0;
     const colore = ok ? css('--good') : cov >= 0.5 ? css('--warn') : css('--bad');
     const esito = ok ? `Rata coperta, avanzano ${eur(r.avanza)}.`
       : `Mancano <strong>${eur(r.manca)}</strong> netti${r.lordoMancante ? `, cioè circa ${eur(r.lordoMancante)} lordi${r.nottiEq && r.adr ? ` (≈ ${nf0.format(r.nottiEq)} notti a ${eur(r.adr)})` : ''}` : ''}.`;
-    return `<div><div class="meter-row"><span>${titolo}</span><span class="num">${eur(r.netto)} / ${eur(r.fabbisogno)} <small>· ${pct(cov, 0)}</small></span></div>
+    return `<div><div class="meter-row"><span>${titolo}</span><span class="num">${eur(r.disponibile)} / ${eur(r.fabbisogno)} <small>· ${pct(cov, 0)}</small></span></div>
       <div class="meter-track" style="background:var(--surface-2)"><div class="meter-fill" style="width:${Math.min(100, cov * 100)}%;background:${colore}"></div></div>
-      <div class="muted" style="font-size:var(--fs-xs);margin-top:4px">${det}. ${esito}</div></div>`;
+      <div class="muted" style="font-size:var(--fs-xs);margin-top:4px">${det}.${bac} ${esito}</div></div>`;
   }).join('');
   $('#cop-body').innerHTML = `${toolbar}${sommario}<div class="stack" style="--gap:14px">${righe}</div>
-    <p class="muted" style="font-size:var(--fs-xs);margin:12px 0 0">Il confronto è in euro, non in notti: con prezzi più alti bastano meno notti. Ogni prenotazione conta per il mese di check-out.</p>`;
+    <p class="muted" style="font-size:var(--fs-xs);margin:12px 0 0">Il confronto è in euro, non in notti: con prezzi più alti bastano meno notti. Ogni prenotazione conta per il mese di check-out; il netto che avanza in un mese resta disponibile per le rate dei mesi dopo (ottobre incluso).</p>`;
   seg($('#seg-sfas'), String(c.sfas), (v) => { ui.cop.sfas = Number(v); saveUI(); renderCopertura(); });
   $$('#cop-body input[data-cop]').forEach((i) => i.addEventListener('change', () => { ui.cop[i.dataset.cop] = i.checked; saveUI(); renderCopertura(); }));
 }

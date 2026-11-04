@@ -414,11 +414,15 @@ export function nettoPrenotazione(data, b, { ced = false, iva = false } = {}) {
 }
 
 /**
- * Per ogni mese di soggiorno (a partire da `da`) confronta il netto delle prenotazioni confermate con la rata che il bonifico del PM
- * deve coprire (quella del mese dopo, o dello stesso mese se sfasamento = 0). Le prenotazioni sono attribuite al mese di check-out,
- * come nel resoconto del PM. Dove esiste il resoconto del mese, vale quello e le prenotazioni inserite a mano vengono ignorate.
+ * Per ogni mese di soggiorno confronta il netto che ti arriva con la rata che il bonifico del PM deve coprire (quella del mese dopo,
+ * o dello stesso mese se sfasamento = 0). Le prenotazioni sono attribuite al mese di check-out, come nel resoconto del PM.
+ * Dove esiste il resoconto del mese vale quello e le prenotazioni inserite a mano vengono ignorate.
+ * Con `bacino` il netto avanzato nei mesi precedenti (a partire da `da`, di solito l'inizio gestione) resta disponibile per le rate
+ * dei mesi dopo; quando non basta, la differenza è quella che metti tu e il bacino riparte da zero.
+ * Si mostrano i mesi da `visibileDa`.
  */
-export function coperturaRata(data, { da, mesi = 6, sfasamento = 1, ced = false, costi = false, iva = false }) {
+export function coperturaRata(data, { da = data.immobile.inizio_gestione, visibileDa, mesi = 6, sfasamento = 1, ced = false, costi = false, iva = false, bacino = true }) {
+  visibileDa = visibileDa && monthDiff(da, visibileDa) > 0 ? visibileDa : da;
   const extra = data.spese.filter((s) => s.categoria === 'rimborso_anticipato').map((s) => ({ mese: s.data.slice(0, 7), importo: Number(s.importo) }));
   const piano = pianoMutuo(data.mutuo, extra);
   const incassi = Object.fromEntries(data.incassi.map((x) => [x.mese, x]));
@@ -428,12 +432,13 @@ export function coperturaRata(data, { da, mesi = 6, sfasamento = 1, ced = false,
     (perMese[b.check_out.slice(0, 7)] ||= []).push(b);
   }
   const ultimo = Object.keys(perMese).sort().pop();
-  const n = Math.min(12, Math.max(mesi, ultimo ? monthDiff(da, ultimo) + 1 : 0));
+  const fine = addMonths(visibileDa, Math.min(11, Math.max(mesi - 1, ultimo ? monthDiff(visibileDa, ultimo) : 0)));
   let rif = null; try { rif = presets(data)['2026']; } catch { /* storico assente */ }
   const cp = (rif?.commPct ?? 0) / 100; const feeEff = data.pm.fee * (iva ? 1 + IVA : 1);
   const kDef = (1 - cp) * (1 - feeEff) - (ced ? (data.fiscale.base === 'netto_portali' ? 1 - cp : 1) * data.fiscale.cedolare : 0);
   const righe = [];
-  for (let k = 0; k < n; k++) {
+  let riporto = 0;
+  for (let k = 0; k <= monthDiff(da, fine); k++) {
     const mese = addMonths(da, k); const pag = addMonths(mese, sfasamento);
     const p = piano.get(pag); const rata = p ? r2(p.rata + p.spese + p.preamm) : 0;
     let costiMese = 0;
@@ -454,15 +459,20 @@ export function coperturaRata(data, { da, mesi = 6, sfasamento = 1, ced = false,
       for (const b of lista) { const x = nettoPrenotazione(data, b, { ced, iva }); lordo += x.lordo; netto += x.netto; nott += nottiTra(b.check_in, b.check_out); }
     }
     const fabbisogno = r2(rata + costiMese);
-    const manca = Math.max(0, r2(fabbisogno - netto));
+    const prec = bacino ? riporto : 0;
+    const disponibile = r2(netto + prec);
+    const manca = Math.max(0, r2(fabbisogno - disponibile));
+    const avanza = Math.max(0, r2(disponibile - fabbisogno));
+    riporto = bacino ? avanza : 0;
     const kNetto = lordo > 0 ? netto / lordo : kDef;
     const adr = nott > 0 && lordo > 0 ? lordo / nott : rif?.adr ?? null;
     const lordoMancante = kNetto > 0 ? manca / kNetto : null;
     righe.push({
       mese, pagamento: pag, fonte, n: lista.length, notti: nott, lordo: r2(lordo), netto: r2(netto), rata, costi: r2(costiMese), fabbisogno,
-      copertura: fabbisogno > 0 ? netto / fabbisogno : null, manca, avanza: Math.max(0, r2(netto - fabbisogno)),
+      riporto: r2(prec), disponibile, copertura: fabbisogno > 0 ? disponibile / fabbisogno : null, manca, avanza,
       lordoMancante: lordoMancante == null ? null : Math.round(lordoMancante), nottiEq: lordoMancante != null && adr ? Math.ceil(lordoMancante / adr) : null, adr,
     });
   }
-  return { righe, totaleManca: r2(righe.reduce((s, r) => s + (r.fabbisogno > 0 ? r.manca : 0), 0)) };
+  const vis = righe.filter((r) => monthDiff(visibileDa, r.mese) >= 0);
+  return { righe: vis, totaleManca: r2(vis.reduce((s, r) => s + (r.fabbisogno > 0 ? r.manca : 0), 0)) };
 }

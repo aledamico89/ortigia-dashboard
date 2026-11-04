@@ -120,7 +120,7 @@ export function createInfo(fmt) {
     copertura: {
       t: 'Copertura della rata',
       cosa: 'Una previsione: dice se le prenotazioni che hai inserito bastano a coprire la rata del mutuo, mese per mese, o quanto dovresti mettere tu. Non cambia nessuna metrica della dashboard.',
-      calc: () => 'Per ogni mese: lordo prenotato − commissione del canale − fee del PM = quello che ti arriva. Lo confronto con la rata che esce il mese dopo (il PM paga dopo la fine del mese). Opzioni: includere i costi fissi, accantonare la cedolare, aggiungere l\'IVA sulla fee del PM.',
+      calc: () => 'Per ogni mese: lordo prenotato − commissione del canale − fee del PM = quello che ti arriva. Lo confronto con la rata che esce il mese dopo (il PM paga dopo la fine del mese). Il netto che avanza in un mese (a partire da ottobre) resta nel "bacino" e può coprire le rate dei mesi successivi; se non basta, la differenza è quella che metti tu. Opzioni: includere i costi fissi, accantonare la cedolare, aggiungere l\'IVA sulla fee del PM.',
       leggi: 'Barra piena = rata coperta. "Mancano X €" è il netto che serve ancora; accanto trovi il lordo equivalente e le notti al prezzo medio già prenotato nel mese (o al prezzo del benchmark se non ci sono prenotazioni). È una stima: i prezzi possono cambiare, le prenotazioni annullarsi, e le prenotazioni dei mesi lontani sono sempre poche.',
     },
     bench: {
