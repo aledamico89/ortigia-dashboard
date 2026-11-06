@@ -1,10 +1,10 @@
 import {
   confrontoBenchmark, CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt, commDaQuote, coperturaRata, nettoPrenotazione, nottiTra,
-} from './finance.js?v=20261104k';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261104k';
-import { createInfo } from './info.js?v=20261104k';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104k';
+} from './finance.js?v=20261104l';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261104l';
+import { createInfo } from './info.js?v=20261104l';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104l';
 
 // ---------- Stato ----------
 let data = null;
@@ -13,7 +13,7 @@ const UI_KEY = 'ortigia.ui.v1';
 const ui = Object.assign({
   view: 'panoramica', valore: 'nominale', stime: true, attr: 'check_in',
   refs: { 2024: false, 2025: true, 2026: true }, cmp: {}, theme: 'auto', sim: null, privacy: false,
-  cop: { sfas: 1, ced: false, costi: false, iva: false, bacino: true },
+  cop: { sfas: 1, ced: false, costi: false, iva: false, bacino: true }, range: { pos: '5', sim: '5' },
 }, (() => { try { return JSON.parse(localStorage.getItem(UI_KEY)) || {}; } catch { return {}; } })());
 const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* ignore */ } };
 const charts = {};
@@ -169,6 +169,38 @@ function baseOptions(extra = {}) {
     ...extra,
   };
 }
+// ---------- Finestra temporale dei grafici di lungo periodo ----------
+const FINESTRE_ANNI = [1, 3, 5, 10];
+/** Disegna il selettore (1 anno · 3 anni · … · Tutto) e restituisce quanti mesi mostrare dall'inizio della gestione (Infinity = tutto). */
+function renderFinestra(sel, key, anni, fineAnno, rerender) {
+  const opts = FINESTRE_ANNI.filter((y) => y < anni);
+  let v = String(ui.range?.[key] ?? '5');
+  if (v !== 'max' && !opts.includes(Number(v))) v = opts.includes(5) ? '5' : 'max';
+  $(sel).innerHTML = [...opts.map((y) => `<button type="button" data-v="${y}">${y} ${y === 1 ? 'anno' : 'anni'}</button>`), `<button type="button" data-v="max">Tutto${fineAnno ? ` · ${fineAnno}` : ''}</button>`].join('');
+  seg($(sel), v, (x) => { ui.range = { ...ui.range, [key]: x }; saveUI(); rerender(); });
+  return v === 'max' ? Infinity : Number(v) * 12;
+}
+/** Opzioni del grafico nel tempo: etichette dell'asse adatte alla durata (mesi, trimestri, anni) e tooltip con mese e anno completi. */
+function opzioniTempo(mesi) {
+  const o = baseOptions();
+  const n = mesi.length; const y0 = Number(mesi[0].slice(0, 4));
+  const spanAnni = Number(mesi[n - 1].slice(0, 4)) - y0 + 1; const passo = Math.max(1, Math.ceil(spanAnni / 8));
+  const mi = (v) => Number(mesi[v]?.slice(5, 7)) - 1;
+  if (n <= 24) o.scales.x.ticks = { ...o.scales.x.ticks, autoSkip: true, maxTicksLimit: 12 };
+  else if (n <= 36) o.scales.x.ticks = { ...o.scales.x.ticks, autoSkip: false, callback: (v) => ([0, 3, 6, 9].includes(mi(v)) ? monthLabel(mesi[v]) : '') };
+  else if (n <= 72) o.scales.x.ticks = { ...o.scales.x.ticks, autoSkip: false, callback: (v) => ([0, 6].includes(mi(v)) ? monthLabel(mesi[v]) : '') };
+  else o.scales.x.ticks = { ...o.scales.x.ticks, autoSkip: false, callback: (v) => (mi(v) === 0 && (Number(mesi[v].slice(0, 4)) - y0) % passo === 0 ? mesi[v].slice(0, 4) : '') };
+  o.plugins.tooltip.filter = (c) => c.raw != null;
+  o.plugins.tooltip.callbacks.title = (it) => (mesi[it[0].dataIndex] ? monthLabel(mesi[it[0].dataIndex], true) : '');
+  o.scales.y.grid = { color: (c) => (c.tick.value === 0 ? css('--axis') : css('--grid')), lineWidth: (c) => (c.tick.value === 0 ? 1.5 : 1) };
+  return o;
+}
+/** Serie con un solo punto (rombo) in corrispondenza del breakeven. */
+const puntoBreakeven = (label, idx, valori, colore) => ({
+  type: 'line', label, data: valori.map((v, i) => (i === idx ? Math.round(v) : null)), showLine: false,
+  pointStyle: 'rectRot', pointRadius: 7, pointHoverRadius: 9, backgroundColor: colore, borderColor: css('--surface'), borderWidth: 2,
+});
+
 /** Colore con trasparenza: i colori dei grafici arrivano come #rrggbb o rgb(). */
 function alpha(c, a) {
   const h = /^#([0-9a-f]{6})$/i.exec(c);
@@ -408,11 +440,20 @@ function renderPosizione(R, k, proj30, p, fine) {
   const anni = Math.max(5, Math.min(30, p.anni || 15));
   const endMese = addMonths(data.immobile.inizio_gestione, anni * 12 - 1);
   const proj = proj30.filter((r) => monthDiff(r.mese, endMese) >= 0);
-  const labels = [...real.map((r) => r.mese), ...proj.map((r) => r.mese)];
+  const labelsAll = [...real.map((r) => r.mese), ...proj.map((r) => r.mese)];
   const nR = real.length;
   const s1 = css('--s1'); const s2 = css('--s2');
-  const dsReal = (key) => [...real.map((r) => Math.round(r[key])), ...proj.map(() => null)];
-  const dsProj = (key) => [...real.map((r, i) => (i === nR - 1 ? Math.round(r[key]) : null)), ...proj.map((r) => Math.round(r[key]))];
+  const nVis = renderFinestra('#pos-range', 'pos', anni, endMese.slice(0, 4), () => renderPosizione(R, k, proj30, p, fine));
+  const nP = Math.min(labelsAll.length, nVis);
+  const labels = labelsAll.slice(0, nP);
+  // breakeven: sull'intero orizzonte di 30 anni, anche se fuori dalla finestra mostrata
+  const tuttiMesi = [...real.map((r) => r.mese), ...proj30.map((r) => r.mese)];
+  const tuttiPos = [...real.map((r) => r.posizione), ...proj30.map((r) => r.posizione)];
+  const tuttiCf = [...real.map((r) => r.cfCum), ...proj30.map((r) => r.cfCum)];
+  const iBp = tuttiPos.findIndex((v) => v >= 0); const iBc = tuttiCf.findIndex((v) => v >= cap);
+  const posAll = tuttiPos.slice(0, labelsAll.length); const cfAll = tuttiCf.slice(0, labelsAll.length);
+  const dsReal = (key) => [...real.map((r) => Math.round(r[key])), ...proj.map(() => null)].slice(0, nP);
+  const dsProj = (key) => [...real.map((r, i) => (i === nR - 1 ? Math.round(r[key]) : null)), ...proj.map((r) => Math.round(r[key]))].slice(0, nP);
   chart('c-posizione', {
     type: 'line',
     data: {
@@ -422,15 +463,15 @@ function renderPosizione(R, k, proj30, p, fine) {
         { label: 'Posizione netta (proiezione)', data: dsProj('posizione'), borderColor: s1, borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: 0.2 },
         { label: 'Cash flow cumulato (reale)', data: dsReal('cfCum'), borderColor: s2, backgroundColor: s2, borderWidth: 2, pointRadius: nR < 3 ? 4 : 0, tension: 0.2 },
         { label: 'Cash flow cumulato (proiezione)', data: dsProj('cfCum'), borderColor: s2, borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: 0.2 },
-      ],
+        puntoBreakeven('Breakeven patrimoniale', iBp, posAll, s1).data.some((x) => x != null) ? puntoBreakeven('Breakeven patrimoniale', iBp, posAll, s1) : null,
+        puntoBreakeven('Breakeven di cassa', iBc, cfAll, s2).data.some((x) => x != null) ? puntoBreakeven('Breakeven di cassa', iBc, cfAll, s2) : null,
+      ].filter(Boolean).map((d) => (d.data.length > nP ? { ...d, data: d.data.slice(0, nP) } : d)),
     },
-    options: baseOptions({
-      plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, filter: (c) => c.raw != null } },
-      scales: { ...baseOptions().scales, x: { ...baseOptions().scales.x, ticks: { ...baseOptions().scales.x.ticks, maxTicksLimit: 10 } },
-        y: { ...baseOptions().scales.y, grid: { color: (c) => (c.tick.value === 0 ? css('--axis') : css('--grid')), lineWidth: (c) => (c.tick.value === 0 ? 1.5 : 1) } } },
-    }),
+    options: opzioniTempo(labels),
   });
-  $('#pos-legend').innerHTML = legendHTML([[s1, 'Posizione netta'], [s2, 'Cash flow cumulato'], [css('--muted'), 'proiezione', true]]);
+  $('#pos-legend').innerHTML = legendHTML([[s1, 'Posizione netta'], [s2, 'Cash flow cumulato'], [css('--muted'), 'proiezione', true]]) + `<span><i style="background:${css('--muted')};transform:rotate(45deg);border-radius:2px;width:9px;height:9px"></i>breakeven</span>`;
+  const dQuando = (i) => (i >= 0 ? monthLabel(tuttiMesi[i], true) : 'oltre 30 anni');
+  $('#pos-note').textContent = `Breakeven patrimoniale: ${dQuando(iBp)} · breakeven di cassa: ${dQuando(iBc)} (con lo scenario del simulatore).`;
   const pr = presets(data)[p.preset];
   $('#proj-badge').textContent = `Scenario: ${pr ? pr.label : 'personalizzato'} · ${nf0.format(p.notti)} notti × ${eur(p.adr)}`;
 }
@@ -1004,23 +1045,29 @@ function updateSim() {
   $('#cmp-chips').innerHTML = '<span class="lbl">Confronta con</span>' + Object.entries(P).map(([k, v]) => `<label class="chip ${ui.cmp[k] ? '' : 'off'}" style="color:${cmpColors[k]}"><input type="checkbox" data-c="${k}" ${ui.cmp[k] ? 'checked' : ''}><span class="sw"></span><span style="color:var(--ink-2)">${v.label}</span></label>`).join('');
   $$('#cmp-chips input').forEach((i) => i.addEventListener('change', () => { ui.cmp[i.dataset.c] = i.checked; saveUI(); updateSim(); }));
   const s1 = css('--s1'); const s2c = css('--s2');
+  const nVis = renderFinestra('#sim-range', 'sim', p.anni, addMonths(data.immobile.inizio_gestione, p.anni * 12 - 1).slice(0, 4), updateSim);
+  const vis = view.slice(0, nVis);
   const ds = [
-    { label: 'Posizione netta', data: view.map((r) => Math.round(r.posizione)), borderColor: s1, backgroundColor: s1, borderWidth: 2, pointRadius: 0, tension: 0.2 },
-    { label: 'Cash flow cumulato', data: view.map((r) => Math.round(r.cfCum)), borderColor: s2c, backgroundColor: s2c, borderWidth: 2, pointRadius: 0, tension: 0.2 },
+    { label: 'Posizione netta', data: vis.map((r) => Math.round(r.posizione)), borderColor: s1, backgroundColor: s1, borderWidth: 2, pointRadius: 0, tension: 0.2 },
+    { label: 'Cash flow cumulato', data: vis.map((r) => Math.round(r.cfCum)), borderColor: s2c, backgroundColor: s2c, borderWidth: 2, pointRadius: 0, tension: 0.2 },
   ];
   const leg = [[s1, 'Posizione netta'], [s2c, 'Cash flow cumulato']];
   for (const [k, on] of Object.entries(ui.cmp)) {
     if (!on || !P[k]) continue;
     const alt = runScenario({ ...p, notti: P[k].notti, adr: P[k].adr, commPct: P[k].commPct, anni: p.anni });
-    ds.push({ label: `Posizione netta · ${P[k].label}`, data: alt.map((r) => Math.round(r.posizione)), borderColor: cmpColors[k], backgroundColor: cmpColors[k], borderWidth: 1.5, borderDash: [5, 4], pointRadius: 0, tension: 0.2 });
+    ds.push({ label: `Posizione netta · ${P[k].label}`, data: alt.slice(0, nVis).map((r) => Math.round(r.posizione)), borderColor: cmpColors[k], backgroundColor: cmpColors[k], borderWidth: 1.5, borderDash: [5, 4], pointRadius: 0, tension: 0.2 });
     leg.push([cmpColors[k], `Posizione netta · ${P[k].label}`, true]);
   }
+  const iBpS = view.findIndex((r) => r.posizione >= 0); const iBcS = view.findIndex((r) => r.cfCum >= cap);
+  for (const [lab, idx, ser, col] of [['Breakeven patrimoniale', iBpS, view.map((r) => r.posizione), s1], ['Breakeven di cassa', iBcS, view.map((r) => r.cfCum), s2c]]) {
+    const d = puntoBreakeven(lab, idx, ser, col); d.data = d.data.slice(0, nVis);
+    if (d.data.some((x) => x != null)) ds.push(d);
+  }
   chart('c-sim', {
-    type: 'line', data: { labels: view.map((r) => monthLabel(r.mese)), datasets: ds },
-    options: baseOptions({ scales: { ...baseOptions().scales, x: { ...baseOptions().scales.x, ticks: { ...baseOptions().scales.x.ticks, maxTicksLimit: 10 } },
-      y: { ...baseOptions().scales.y, grid: { color: (c) => (c.tick.value === 0 ? css('--axis') : css('--grid')), lineWidth: (c) => (c.tick.value === 0 ? 1.5 : 1) } } } }),
+    type: 'line', data: { labels: vis.map((r) => monthLabel(r.mese)), datasets: ds },
+    options: opzioniTempo(vis.map((r) => r.mese)),
   });
-  $('#sim-legend').innerHTML = legendHTML(leg);
+  $('#sim-legend').innerHTML = legendHTML(leg) + `<span><i style="background:${css('--muted')};transform:rotate(45deg);border-radius:2px;width:9px;height:9px"></i>breakeven</span>`;
 
   const anni = sintesiAnnua(view);
   $('#t-sim').innerHTML = `<thead><tr><th>Anno</th><th class="n">Lordo</th><th class="n">Reddito netto</th><th class="n">Cash flow</th><th class="n">CF cumulato</th><th class="n">Debito</th><th class="n">Valore</th><th class="n">Posizione netta</th></tr></thead><tbody>${anni.map((a) => `

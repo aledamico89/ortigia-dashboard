@@ -14,10 +14,10 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Ortigia Investimento</title>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-  <link rel="stylesheet" href="css/style.css?v=20261104k">
+  <link rel="stylesheet" href="css/style.css?v=20261104l">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-  <script type="module" src="js/app.js?v=20261104k"></script>
+  <script type="module" src="js/app.js?v=20261104l"></script>
 </head>
 <body>
 <header class="top">
@@ -117,8 +117,10 @@
     <div class="card mt">
       <div class="card-head"><h2>Posizione netta nel tempo</h2><button type="button" class="info" data-info="posizione" data-ctx="panoramica" aria-label="Spiegazione: Posizione netta nel tempo" aria-expanded="false" aria-controls="info-pop">?</button><span class="sub">reale + proiezione dello scenario del simulatore</span>
         <div class="right"><span class="badge" id="proj-badge">—</span></div></div>
+      <div class="seg" id="pos-range" style="margin-bottom:8px" role="group" aria-label="Periodo mostrato"></div>
       <div class="chart tall"><canvas id="c-posizione" aria-label="Grafico posizione netta"></canvas></div>
       <div class="legend" id="pos-legend"></div>
+      <p class="muted" id="pos-note" style="font-size:var(--fs-sm);margin:6px 0 0"></p>
       <p class="fine">Posizione netta = (valore immobile − debito residuo) + cash flow cumulato − capitale proprio investito. Sopra lo zero hai recuperato tutto, inclusi notaio, agenzia e spese bancarie.</p>
     </div>
 
@@ -264,6 +266,7 @@
         <div class="card">
           <div class="card-head"><h2>Posizione netta e cash flow cumulato</h2><span class="sub">dal rogito</span></div>
           <div class="toolbar" id="cmp-chips" style="margin-bottom:8px"><span class="lbl">Confronta con</span></div>
+          <div class="seg" id="sim-range" style="margin-bottom:8px" role="group" aria-label="Periodo mostrato"></div>
           <div class="chart tall"><canvas id="c-sim" aria-label="Grafico simulazione"></canvas></div>
           <div class="legend" id="sim-legend"></div>
         </div>
