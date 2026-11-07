@@ -14,10 +14,10 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Ortigia Investimento</title>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-  <link rel="stylesheet" href="css/style.css?v=20261104l">
+  <link rel="stylesheet" href="css/style.css?v=20261107a">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-  <script type="module" src="js/app.js?v=20261104l"></script>
+  <script type="module" src="js/app.js?v=20261107a"></script>
 </head>
 <body>
 <header class="top">
@@ -221,7 +221,8 @@
         <div class="card-head"><h3 id="sp-form-title">Nuova spesa</h3></div>
         <form id="f-spesa">
           <div class="row">
-            <label class="f">Data pagamento<input type="date" name="data" required></label>
+            <label class="f">Stato<select name="stato" id="sel-stato"><option value="pagata">Pagata</option><option value="da_pagare">Da pagare</option><option value="programmata">Programmata</option></select></label>
+            <label class="f"><span id="lbl-data">Data pagamento</span><input type="date" name="data" required></label>
             <label class="f">Categoria<select name="categoria" id="sel-cat"></select></label>
             <label class="f">Importo (€)<input type="number" step="0.01" name="importo" required></label>
             <label class="f">Competenza dal<input type="month" name="competenza_dal"></label>
@@ -236,8 +237,10 @@
         <div class="card-head"><h3>Come funziona</h3></div>
         <p class="prose">Per ogni categoria la dashboard usa l'importo reale nei mesi coperti da una bolletta; nei mesi non ancora coperti usa la quota mensile del budget (modificabile in <em>Impostazioni</em>), marcata come stima.</p>
         <p class="prose">Esempi: bolletta Edison di 180 € per nov–dic → competenza 2026-11 → 2026-12. TARI annuale → competenza gen–dic. Un <strong>rimborso anticipato</strong> riduce il debito e ricalcola la rata. Una <strong>cedolare versata (F24)</strong> abbassa le tasse da accantonare.</p>
+        <p class="prose"><strong>Stato:</strong> <em>da pagare</em> = bolletta ricevuta con scadenza (es. TARI «entro il…»); <em>programmata</em> = addebito già fissato (es. RID) con la data prevista; <em>pagata</em> = uscita effettiva. Lo stato non cambia i conti: una bolletta ricevuta è già un costo di competenza, qualunque sia il suo stato.</p>
       </div>
     </div>
+    <div id="sp-riepilogo"></div>
     <div class="card mt"><div class="table-wrap"><table id="t-spese"></table></div></div>
 
     <div class="section-title"><h2>Stime di valore</h2><span class="sub">perizie, valutazioni agenzia, tue stime</span></div>

@@ -1,10 +1,10 @@
 import {
   confrontoBenchmark, CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt, commDaQuote, coperturaRata, nettoPrenotazione, nottiTra,
-} from './finance.js?v=20261104l';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261104l';
-import { createInfo } from './info.js?v=20261104l';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261104l';
+} from './finance.js?v=20261107a';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261107a';
+import { createInfo } from './info.js?v=20261107a';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261107a';
 
 // ---------- Stato ----------
 let data = null;
@@ -35,6 +35,10 @@ let info = null; // spiegazioni "?" (inizializzate dopo la definizione dei forma
 const cls = (x) => (x > 0.004 ? 'pos' : x < -0.004 ? 'neg' : '');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => new Date().toISOString().slice(0, 10);
+const STATI_SPESA = { pagata: 'Pagata', da_pagare: 'Da pagare', programmata: 'Programmata' };
+const ETICHETTA_DATA = { pagata: 'Data pagamento', da_pagare: 'Da pagare entro', programmata: 'Addebito previsto il' };
+/** Le spese inserite prima dell'introduzione dello stato sono tutte pagate. */
+const statoSpesa = (s) => (STATI_SPESA[s.stato] ? s.stato : 'pagata');
 const currentMonth = () => monthKey(new Date());
 
 info = createInfo({ eur, eurS, pct, nf0, esc, monthLabel });
@@ -588,13 +592,37 @@ function renderRegistro() {
 
   // Spese
   $('#sel-cat').innerHTML = Object.entries(CATEGORIE).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
-  const sp = data.spese.slice().sort((a, b) => b.data.localeCompare(a.data));
-  $('#t-spese').innerHTML = sp.length ? `<thead><tr><th>Data</th><th>Categoria</th><th>Descrizione</th><th>Competenza</th><th class="n">Importo</th><th>Allegati</th><th></th></tr></thead><tbody>${sp.map((s) => `
-    <tr><td>${new Date(s.data).toLocaleDateString('it-IT')}</td><td>${esc(CATEGORIE[s.categoria] || s.categoria)}</td><td>${esc(s.descrizione || '')}</td>
+  // prima le spese ancora da pagare (la più vicina in alto), poi quelle pagate dalla più recente
+  const aperta = (s) => statoSpesa(s) !== 'pagata';
+  const sp = data.spese.slice().sort((a, b) => (aperta(b) - aperta(a)) || (aperta(a) ? a.data.localeCompare(b.data) : b.data.localeCompare(a.data)));
+  const oggi = today(); const tra7 = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const badgeStato = (s) => {
+    const st = statoSpesa(s);
+    if (st === 'pagata') return '<span class="badge ok">Pagata</span>';
+    if (st === 'da_pagare') return s.data < oggi ? '<span class="badge bad">Scaduta</span>' : `<span class="badge${s.data <= tra7 ? ' warn' : ''}">Da pagare</span>`;
+    return s.data < oggi ? '<span class="badge warn" title="La data di addebito è passata: se è andato a buon fine, segnala come pagata">Addebito passato</span>' : '<span class="badge">Programmata</span>';
+  };
+  const dataIt = (v) => new Date(v).toLocaleDateString('it-IT');
+  const aperte = sp.filter(aperta);
+  const gruppo = (st) => { const x = aperte.filter((s) => statoSpesa(s) === st); return { n: x.length, tot: x.reduce((t, s) => t + Number(s.importo), 0) }; };
+  const dp = gruppo('da_pagare'); const pr = gruppo('programmata');
+  const inRitardo = aperte.filter((s) => s.data < oggi && statoSpesa(s) === 'da_pagare');
+  const prossima = aperte.find((s) => s.data >= oggi);
+  $('#sp-riepilogo').innerHTML = aperte.length ? `<div class="card mt" style="padding-block:12px"><p style="margin:0">
+    ${dp.n ? `<strong>${dp.n} da pagare</strong> (${eur(dp.tot, 2)})` : ''}${dp.n && pr.n ? ' · ' : ''}${pr.n ? `<strong>${pr.n} ${pr.n === 1 ? 'programmata' : 'programmate'}</strong> (${eur(pr.tot, 2)})` : ''}
+    ${inRitardo.length ? ` · <strong style="color:var(--bad-ink)">${inRitardo.length} ${inRitardo.length === 1 ? 'scaduta' : 'scadute'}</strong>` : ''}
+    ${prossima ? `<span class="muted"> · prossima: ${dataIt(prossima.data)}, ${esc(CATEGORIE[prossima.categoria] || prossima.categoria)} ${eur(prossima.importo, 2)}</span>` : ''}</p></div>` : '';
+  $('#t-spese').innerHTML = sp.length ? `<thead><tr><th>Data</th><th>Stato</th><th>Categoria</th><th>Descrizione</th><th>Competenza</th><th class="n">Importo</th><th>Allegati</th><th></th></tr></thead><tbody>${sp.map((s) => `
+    <tr><td>${dataIt(s.data)}</td><td>${badgeStato(s)}</td><td>${esc(CATEGORIE[s.categoria] || s.categoria)}</td><td>${esc(s.descrizione || '')}</td>
     <td>${s.competenza_dal ? `${monthLabel(s.competenza_dal)}${s.competenza_al && s.competenza_al !== s.competenza_dal ? ` → ${monthLabel(s.competenza_al)}` : ''}` : monthLabel(s.data.slice(0, 7))}</td>
     <td class="n">${eur(s.importo, 2)}</td><td>${allegatiLinks(s.allegati)}</td>
-    <td style="white-space:nowrap"><button class="btn small ghost" data-edit-sp="${s.id}">Modifica</button><button class="btn small ghost danger" data-del-sp="${s.id}">Elimina</button></td></tr>`).join('')}</tbody>`
+    <td style="white-space:nowrap">${aperta(s) ? `<button class="btn small" data-pay-sp="${s.id}">Segna pagata</button>` : ''}<button class="btn small ghost" data-edit-sp="${s.id}">Modifica</button><button class="btn small ghost danger" data-del-sp="${s.id}">Elimina</button></td></tr>`).join('')}</tbody>`
     : '<tbody><tr><td class="empty">Nessuna spesa registrata. Polizza e internet sono già conteggiati automaticamente dal budget.</td></tr></tbody>';
+  $$('[data-pay-sp]').forEach((b) => b.onclick = async () => {
+    const s = data.spese.find((x) => x.id === b.dataset.paySp);
+    s.scadenza = s.scadenza || s.data; s.stato = 'pagata'; s.data = today();
+    await persist(`Spesa pagata: ${CATEGORIE[s.categoria] || s.categoria} ${eur(s.importo, 2)}`);
+  });
   $$('[data-edit-sp]').forEach((b) => b.onclick = () => fillSpesa(data.spese.find((x) => x.id === b.dataset.editSp)));
   $$('[data-del-sp]').forEach((b) => b.onclick = async () => {
     if (!confirm('Eliminare questa spesa?')) return;
@@ -696,13 +724,16 @@ $('#f-incasso').addEventListener('submit', async (e) => {
 
 function fillSpesa(s) {
   const f = $('#f-spesa');
+  f.stato.value = statoSpesa(s); aggiornaEtichettaData();
   f.data.value = s.data; f.categoria.value = s.categoria; f.importo.value = s.importo;
   f.competenza_dal.value = s.competenza_dal || ''; f.competenza_al.value = s.competenza_al || ''; f.descrizione.value = s.descrizione || '';
   f.dataset.id = s.id;
   $('#sp-form-title').textContent = 'Modifica spesa';
   f.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
-$('#f-spesa').addEventListener('reset', (e) => { delete e.target.dataset.id; $('#sp-form-title').textContent = 'Nuova spesa'; });
+function aggiornaEtichettaData() { $('#lbl-data').textContent = ETICHETTA_DATA[$('#sel-stato').value] || ETICHETTA_DATA.pagata; }
+$('#sel-stato').addEventListener('change', aggiornaEtichettaData);
+$('#f-spesa').addEventListener('reset', (e) => { delete e.target.dataset.id; $('#sp-form-title').textContent = 'Nuova spesa'; setTimeout(aggiornaEtichettaData, 0); });
 $('#f-spesa').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target; const fd = new FormData(f);
@@ -713,7 +744,8 @@ $('#f-spesa').addEventListener('submit', async (e) => {
   if (monthDiff(dal, al) < 0) [dal, al] = [al, dal];
   try {
     const path = await uploadFile(fd.get('file'), `spese/${dal}`);
-    const rec = { ...(prev || {}), id, data: fd.get('data'), categoria: fd.get('categoria'), importo: Number(fd.get('importo')),
+    const stato = fd.get('stato');
+    const rec = { ...(prev || {}), id, stato, scadenza: stato === 'pagata' ? prev?.scadenza : fd.get('data'), data: fd.get('data'), categoria: fd.get('categoria'), importo: Number(fd.get('importo')),
       competenza_dal: dal, competenza_al: al, descrizione: fd.get('descrizione'), allegati: [...(prev?.allegati || []), ...(path ? [path] : [])] };
     data.spese = data.spese.filter((x) => x.id !== id).concat(rec);
     await persist(`Spesa ${CATEGORIE[rec.categoria]} ${eur(rec.importo, 2)}`);
