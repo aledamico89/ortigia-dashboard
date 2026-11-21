@@ -123,6 +123,24 @@ export function createInfo(fmt) {
       calc: () => 'Per ogni mese: lordo prenotato − commissione del canale − fee del PM = quello che ti arriva. Lo confronto con la rata che esce il mese dopo (il PM paga dopo la fine del mese). Il netto che avanza in un mese (a partire da ottobre) resta nel "bacino" e può coprire le rate dei mesi successivi; se non basta, la differenza è quella che metti tu. Opzioni: includere i costi fissi, accantonare la cedolare, aggiungere l\'IVA sulla fee del PM.',
       leggi: 'Barra piena = rata coperta. "Mancano X €" è il netto che serve ancora; accanto trovi il lordo equivalente e le notti al prezzo medio già prenotato nel mese (o al prezzo del benchmark se non ci sono prenotazioni). È una stima: i prezzi possono cambiare, le prenotazioni annullarsi, e le prenotazioni dei mesi lontani sono sempre poche.',
     },
+    prenotazioni: {
+      t: 'Prenotazioni',
+      cosa: 'Inserisci a mano le prenotazioni che vedi nel gestionale del PM. Servono solo a prevedere se coprono la rata del mutuo: non entrano in nessuna metrica.',
+      sezioni: [
+        { h: 'Cosa inserire', html: 'L\'importo <strong>lordo totale</strong>, quello pagato dall\'ospite. La dashboard stima quanto resta a te togliendo la commissione del canale e la fee del PM, e lo confronta con la rata.' },
+        { h: 'A che mese appartiene', html: 'Ogni prenotazione conta per il mese di <strong>check-out</strong>, come nel resoconto del PM. Quando importi il resoconto di quel mese, i numeri veri sostituiscono quelli inseriti qui (il mese mostra il badge «nel resoconto»).' },
+        { h: 'Totali del mese', html: 'Nella riga di ogni mese trovi lordo e netto stimato per te (ᶜ). Le prenotazioni cancellate restano in elenco ma non entrano nei totali.' },
+      ],
+    },
+    spese: {
+      t: 'Spese e bollette',
+      cosa: 'Ogni importo viene ripartito sui mesi di competenza. Per ogni categoria la dashboard usa l\'importo reale nei mesi coperti da una bolletta; negli altri mesi usa la quota mensile del budget (modificabile in Impostazioni), marcata come stima.',
+      sezioni: [
+        { h: 'Esempi', html: 'Bolletta Edison di 180 € per nov–dic → competenza 2026-11 → 2026-12. TARI annuale → competenza gen–dic. Un <strong>rimborso anticipato</strong> riduce il debito e ricalcola la rata. Una <strong>cedolare versata (F24)</strong> abbassa le tasse da accantonare.' },
+        { h: 'Stato', html: '<em>Da pagare</em> = bolletta ricevuta con scadenza (es. TARI «entro il…»). <em>Programmata</em> = addebito già fissato (es. RID) con la data prevista. <em>Pagata</em> = uscita effettiva. Lo stato non cambia i conti: una bolletta ricevuta è già un costo di competenza.' },
+        { h: 'Totali del mese', html: 'Ogni mese raggruppa le spese in base alla loro data (pagamento, scadenza o addebito) e ne mostra la somma: è l\'uscita di cassa del mese, non la competenza.' },
+      ],
+    },
     bench: {
       t: 'Rispetto al benchmark',
       cosa: 'Confronta i mesi della tua gestione con gli stessi mesi degli anni precedenti (gestione del venditore), per capire se la casa rende più o meno di prima. Il benchmark non è un obiettivo: è un termine di paragone.',
@@ -201,8 +219,11 @@ export function createInfo(fmt) {
       <p>${esc(def.cosa)}</p>
       ${calc ? `<div class="ip-sec"><span>Come si calcola, con i tuoi numeri</span><p>${calc}</p></div>` : ''}
       ${def.leggi ? `<div class="ip-sec"><span>Come leggerlo</span><p>${esc(val(def.leggi))}</p></div>` : ''}
+      ${(def.sezioni || []).map((s) => `<div class="ip-sec"><span>${esc(s.h)}</span><p>${s.html}</p></div>`).join('')}
       ${nota ? `<p class="ip-note">${esc(nota)}</p>` : ''}`;
     pop.setAttribute('aria-labelledby', 'ip-title');
+    // dentro una modale il riquadro deve stare nella modale stessa, altrimenti resta nascosto sotto di essa
+    const host = btn.closest('dialog') || document.body; if (pop.parentNode !== host) host.appendChild(pop);
     pop.hidden = false; openBtn = btn; btn.setAttribute('aria-expanded', 'true');
     place(btn);
     pop.querySelector('.ip-close').focus({ preventScroll: true });
@@ -230,7 +251,8 @@ export function createInfo(fmt) {
     if (e.target.closest('.ip-close')) { const b = close(); b?.focus(); return; }
     if (openBtn && !pop.contains(e.target)) close();
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openBtn) { const b = close(); b?.focus(); } });
+  let chiusoAt = 0;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openBtn) { e.preventDefault(); chiusoAt = Date.now(); const b = close(); b?.focus(); } });
   addEventListener('resize', () => { if (openBtn) place(openBtn); });
   addEventListener('scroll', () => { if (openBtn && !pop.classList.contains('sheet')) close(); }, { passive: true });
 
@@ -238,5 +260,7 @@ export function createInfo(fmt) {
     btn: (key, label, ctxName = 'panoramica') => `<button type="button" class="info" data-info="${key}" data-ctx="${ctxName}" aria-label="Spiegazione: ${esc(label)}" aria-expanded="false" aria-controls="info-pop">?</button>`,
     setCtx: (name, c) => { ctx[name] = c; },
     close,
+    /** true se un Esc ha appena chiuso il riquadro: la modale sotto non deve chiudersi con lo stesso tasto */
+    chiusoOra: () => Date.now() - chiusoAt < 150,
   };
 }

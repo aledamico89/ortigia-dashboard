@@ -1,10 +1,10 @@
 import {
   confrontoBenchmark, CATEGORIE, NON_COSTI, monthKey, addMonths, monthDiff, monthsBetween, monthLabel, MESI,
   registro, kpi, capitaleProprio, costiTransazione, feePM, presets, simula, sintesiAnnua, stagionalita, valoreImmobile, pmt, commDaQuote, coperturaRata, nettoPrenotazione, nottiTra,
-} from './finance.js?v=20261107a';
-import { getConfig, setConfig, makeStore } from './store.js?v=20261107a';
-import { createInfo } from './info.js?v=20261107a';
-import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261107a';
+} from './finance.js?v=20261121a';
+import { getConfig, setConfig, makeStore } from './store.js?v=20261121a';
+import { createInfo } from './info.js?v=20261121a';
+import { parseDate, toNum, isoDate, strip, CAMPI, riconosci, leggiResoconto, meseSuggerito, controlla, costruisciRecord } from './importers.js?v=20261121a';
 
 // ---------- Stato ----------
 let data = null;
@@ -13,7 +13,7 @@ const UI_KEY = 'ortigia.ui.v1';
 const ui = Object.assign({
   view: 'panoramica', valore: 'nominale', stime: true, attr: 'check_in',
   refs: { 2024: false, 2025: true, 2026: true }, cmp: {}, theme: 'auto', sim: null, privacy: false,
-  cop: { sfas: 1, ced: false, costi: false, iva: false, bacino: true }, range: { pos: '5', sim: '5' },
+  cop: { sfas: 1, ced: false, costi: false, iva: false, bacino: true }, range: { pos: '5', sim: '5' }, acc: {},
 }, (() => { try { return JSON.parse(localStorage.getItem(UI_KEY)) || {}; } catch { return {}; } })());
 const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* ignore */ } };
 const charts = {};
@@ -612,12 +612,29 @@ function renderRegistro() {
     ${dp.n ? `<strong>${dp.n} da pagare</strong> (${eur(dp.tot, 2)})` : ''}${dp.n && pr.n ? ' · ' : ''}${pr.n ? `<strong>${pr.n} ${pr.n === 1 ? 'programmata' : 'programmate'}</strong> (${eur(pr.tot, 2)})` : ''}
     ${inRitardo.length ? ` · <strong style="color:var(--bad-ink)">${inRitardo.length} ${inRitardo.length === 1 ? 'scaduta' : 'scadute'}</strong>` : ''}
     ${prossima ? `<span class="muted"> · prossima: ${dataIt(prossima.data)}, ${esc(CATEGORIE[prossima.categoria] || prossima.categoria)} ${eur(prossima.importo, 2)}</span>` : ''}</p></div>` : '';
-  $('#t-spese').innerHTML = sp.length ? `<thead><tr><th>Data</th><th>Stato</th><th>Categoria</th><th>Descrizione</th><th>Competenza</th><th class="n">Importo</th><th>Allegati</th><th></th></tr></thead><tbody>${sp.map((s) => `
+  const righeSp = (arr) => `<table><thead><tr><th>Data</th><th>Stato</th><th>Categoria</th><th>Descrizione</th><th>Competenza</th><th class="n">Importo</th><th>Allegati</th><th></th></tr></thead><tbody>${arr.map((s) => `
     <tr><td>${dataIt(s.data)}</td><td>${badgeStato(s)}</td><td>${esc(CATEGORIE[s.categoria] || s.categoria)}</td><td>${esc(s.descrizione || '')}</td>
     <td>${s.competenza_dal ? `${monthLabel(s.competenza_dal)}${s.competenza_al && s.competenza_al !== s.competenza_dal ? ` → ${monthLabel(s.competenza_al)}` : ''}` : monthLabel(s.data.slice(0, 7))}</td>
     <td class="n">${eur(s.importo, 2)}</td><td>${allegatiLinks(s.allegati)}</td>
-    <td style="white-space:nowrap">${aperta(s) ? `<button class="btn small" data-pay-sp="${s.id}">Segna pagata</button>` : ''}<button class="btn small ghost" data-edit-sp="${s.id}">Modifica</button><button class="btn small ghost danger" data-del-sp="${s.id}">Elimina</button></td></tr>`).join('')}</tbody>`
-    : '<tbody><tr><td class="empty">Nessuna spesa registrata. Polizza e internet sono già conteggiati automaticamente dal budget.</td></tr></tbody>';
+    <td style="white-space:nowrap">${aperta(s) ? `<button class="btn small" data-pay-sp="${s.id}">Segna pagata</button>` : ''}<button class="btn small ghost" data-edit-sp="${s.id}">Modifica</button><button class="btn small ghost danger" data-del-sp="${s.id}">Elimina</button></td></tr>`).join('')}</tbody></table>`;
+  // un accordion per mese (data di pagamento/scadenza), dal più recente; si aprono i mesi con spese ancora aperte
+  const perMeseSp = {};
+  for (const s of sp) (perMeseSp[s.data.slice(0, 7)] ??= []).push(s);
+  const mesiSp = Object.keys(perMeseSp).sort().reverse();
+  const plur = (n, s1, sn) => (n === 1 ? s1 : sn);
+  const gruppiSp = mesiSp.map((m, i) => {
+    const arr = perMeseSp[m]; const ap = arr.filter(aperta);
+    const scad = ap.filter((s) => statoSpesa(s) === 'da_pagare' && s.data < oggi).length;
+    const dpg = ap.filter((s) => statoSpesa(s) === 'da_pagare').length - scad;
+    const prg = ap.filter((s) => statoSpesa(s) === 'programmata').length;
+    const badge = [scad ? `<span class="badge bad">${scad} ${plur(scad, 'scaduta', 'scadute')}</span>` : '', dpg ? `<span class="badge">${dpg} da pagare</span>` : '', prg ? `<span class="badge">${prg} ${plur(prg, 'programmata', 'programmate')}</span>` : ''].join('');
+    return { key: m, titolo: `${meseEsteso(m)}${badge}`, meta: `${arr.length} ${plur(arr.length, 'spesa', 'spese')}`,
+      tot: `<strong title="Somma degli importi con data in questo mese (uscita di cassa, non competenza)">${eur(arr.reduce((t, s) => t + Number(s.importo), 0), 2)}</strong>`,
+      body: righeSp(arr), aperto: ap.length > 0 || (!aperte.length && i === 0) };
+  });
+  $('#acc-sp').innerHTML = gruppiSp.length ? accordionHTML('sp', gruppiSp)
+    : '<div class="card"><p class="muted" style="margin:0">Nessuna spesa registrata. Polizza e internet sono già conteggiati automaticamente dal budget.</p></div>';
+  bindAccordion($('#acc-sp'));
   $$('[data-pay-sp]').forEach((b) => b.onclick = async () => {
     const s = data.spese.find((x) => x.id === b.dataset.paySp);
     s.scadenza = s.scadenza || s.data; s.stato = 'pagata'; s.data = today();
@@ -655,18 +672,72 @@ async function uploadFile(file, folder) {
   return store.upload(`allegati/${folder}/${Date.now()}-${safe}`, file);
 }
 
+// ---------- Accordion per mese e modali (Registro) ----------
+/** gruppi: [{key, titolo, meta, tot, body, aperto, sep?}]. Lo stato aperto/chiuso scelto dall'utente è ricordato in ui.acc. */
+const meseEsteso = (m) => new Date(`${m}-01T12:00:00`).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+function accordionHTML(sezione, gruppi) {
+  const st = ui.acc?.[sezione] || {};
+  return gruppi.map((g) => `${g.sep ? `<div class="acc-sep">${g.sep}</div>` : ''}<details data-acc="${sezione}" data-key="${g.key}" data-def="${g.aperto ? 1 : 0}"${(st[g.key] ?? g.aperto) ? ' open' : ''}>
+    <summary><span class="acc-t">${g.titolo}</span><span class="acc-meta">${g.meta}</span><span class="acc-n">${g.tot}</span></summary>
+    <div class="acc-body">${g.body}</div></details>`).join('');
+}
+function bindAccordion(root) {
+  $$('details[data-acc]', root).forEach((d) => d.addEventListener('toggle', () => {
+    ui.acc = ui.acc || {}; const m = (ui.acc[d.dataset.acc] ??= {});
+    if (d.open === (d.dataset.def === '1')) delete m[d.dataset.key]; else m[d.dataset.key] = d.open;
+    saveUI();
+  }));
+}
+/** Apre la modale al mese indicato dopo un salvataggio. */
+function apriMese(sezione, mese) { ui.acc = ui.acc || {}; (ui.acc[sezione] ??= {})[mese] = true; saveUI(); }
+function modale(dlg) {
+  let giu = null;
+  dlg.addEventListener('pointerdown', (e) => { giu = e.target; });
+  dlg.addEventListener('click', (e) => { if ((e.target === dlg && giu === dlg) || e.target.closest('[data-close]')) dlg.close(); });
+  dlg.addEventListener('cancel', (e) => { if (info.chiusoOra()) e.preventDefault(); });
+  dlg.addEventListener('close', () => { info.close(); $('form', dlg).reset(); });
+  return dlg;
+}
+function apri(dlg) {
+  if (!dlg.open) dlg.showModal();
+  if (matchMedia('(pointer: fine)').matches) $('form', dlg).elements[0]?.focus({ preventScroll: true });
+}
+const dlgPren = modale($('#dlg-pren')); const dlgSp = modale($('#dlg-sp'));
+
 function renderPrenotazioni() {
-  const lista = (data.prenotazioni || []).slice().sort((x, y) => x.check_in.localeCompare(y.check_in));
+  const lista = (data.prenotazioni || []).slice().sort((x, y) => x.check_out.localeCompare(y.check_out) || x.check_in.localeCompare(y.check_in));
   const conResoconto = new Set(data.incassi.map((x) => x.mese));
-  $('#t-pren').innerHTML = lista.length ? `<thead><tr><th>Check-in</th><th>Check-out</th><th class="n">Notti</th><th>Canale</th><th class="n">Lordo</th><th class="n">Netto per te</th><th>Stato</th><th></th></tr></thead><tbody>${lista.map((b) => {
-    const x = nettoPrenotazione(data, b, { iva: ui.cop?.iva }); const annullata = b.stato === 'cancellata'; const nelResoconto = conResoconto.has(b.check_out.slice(0, 7));
-    const d = (v) => v.split('-').reverse().join('/');
+  const d = (v) => v.split('-').reverse().join('/');
+  const righe = (arr) => `<table><thead><tr><th>Check-in</th><th>Check-out</th><th class="n">Notti</th><th>Canale</th><th class="n">Lordo</th><th class="n">Netto per te</th><th>Stato</th><th></th></tr></thead><tbody>${arr.map((b) => {
+    const x = nettoPrenotazione(data, b, { iva: ui.cop?.iva }); const annullata = b.stato === 'cancellata';
     return `<tr${annullata ? ' style="opacity:.55"' : ''}><td>${d(b.check_in)}</td><td>${d(b.check_out)}</td><td class="n">${nottiTra(b.check_in, b.check_out)}</td><td>${esc(b.canale)}</td>
       <td class="n">${eur(b.lordo, 2)}</td><td class="n">${annullata ? '—' : `${eur(x.netto, 2)}<span class="est" title="stima: lordo − commissione canale − fee PM">ᶜ</span>`}</td>
-      <td><span class="badge ${annullata ? 'bad' : 'ok'}">${esc(b.stato || 'confermata')}</span>${nelResoconto && !annullata ? ' <span class="badge" title="Il mese ha già il resoconto del PM: conta quello, non questa prenotazione">nel resoconto</span>' : ''}</td>
+      <td><span class="badge ${annullata ? 'bad' : 'ok'}">${esc(b.stato || 'confermata')}</span></td>
       <td style="white-space:nowrap"><button class="btn small ghost" data-edit-pren="${esc(b.id)}">Modifica</button><button class="btn small ghost danger" data-del-pren="${esc(b.id)}">Elimina</button></td></tr>`
       + (b.nota ? `<tr><td></td><td colspan="7" class="muted" style="font-size:var(--fs-xs);border-top:0">${esc(b.nota)}</td></tr>` : '');
-  }).join('')}</tbody>` : '<tbody><tr><td class="empty">Nessuna prenotazione inserita.</td></tr></tbody>';
+  }).join('')}</tbody></table>`;
+  // un accordion per mese di check-out: prima i mesi da oggi in avanti, poi quelli passati (dal più recente)
+  const per = {};
+  for (const b of lista) (per[b.check_out.slice(0, 7)] ??= []).push(b);
+  const mesi = Object.keys(per).sort(); const mAtt = currentMonth();
+  const futuri = mesi.filter((m) => m >= mAtt); const passati = mesi.filter((m) => m < mAtt).reverse();
+  const primo = futuri[0] ?? passati[0];
+  const gruppo = (m, sep) => {
+    const bs = per[m]; const att = bs.filter((b) => b.stato !== 'cancellata'); const ann = bs.length - att.length;
+    const notti = att.reduce((t, b) => t + nottiTra(b.check_in, b.check_out), 0);
+    const lordo = att.reduce((t, b) => t + Number(b.lordo), 0);
+    const netto = att.reduce((t, b) => t + nettoPrenotazione(data, b, { iva: ui.cop?.iva }).netto, 0);
+    const res = conResoconto.has(m);
+    return { key: m, sep, aperto: m === primo,
+      titolo: `${meseEsteso(m)}${res ? '<span class="badge" title="Il mese ha già il resoconto del PM: contano i suoi numeri, non queste prenotazioni">nel resoconto</span>' : ''}`,
+      meta: `${att.length} ${att.length === 1 ? 'prenotazione' : 'prenotazioni'} · ${nf0.format(notti)} ${notti === 1 ? 'notte' : 'notti'}${ann ? ` · ${ann} ${ann === 1 ? 'cancellata' : 'cancellate'}` : ''}`,
+      tot: `<span${res ? ' style="opacity:.6"' : ''}><strong>${eur(lordo)}</strong> lordi · ${eur(netto)} netti per te<span class="est" title="stima: lordo − commissione canale − fee PM">ᶜ</span></span>`,
+      body: righe(bs) };
+  };
+  const gruppi = [...futuri.map((m) => gruppo(m)), ...passati.map((m, i) => gruppo(m, i === 0 && futuri.length ? 'Mesi passati' : ''))];
+  $('#acc-pren').innerHTML = gruppi.length ? accordionHTML('pren', gruppi)
+    : '<div class="card"><p class="muted" style="margin:0">Nessuna prenotazione inserita. Usa «Nuova prenotazione» per aggiungerne una.</p></div>';
+  bindAccordion($('#acc-pren'));
   $$('[data-edit-pren]').forEach((b) => b.onclick = () => fillPren(data.prenotazioni.find((x) => x.id === b.dataset.editPren)));
   $$('[data-del-pren]').forEach((b) => b.onclick = async () => {
     if (!confirm('Eliminare questa prenotazione?')) return;
@@ -676,21 +747,30 @@ function renderPrenotazioni() {
 }
 function fillPren(b) {
   const f = $('#f-pren');
+  f.reset();
   f.canale.value = b.canale; f.check_in.value = b.check_in; f.check_out.value = b.check_out; f.lordo.value = b.lordo;
   f.stato.value = b.stato || 'confermata'; f.nota.value = b.nota || ''; f.dataset.id = b.id;
   $('#pren-form-title').textContent = 'Modifica prenotazione';
-  f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  $('[data-again]', f).hidden = true;
+  apri(dlgPren);
 }
-$('#f-pren').addEventListener('reset', (e) => { delete e.target.dataset.id; $('#pren-form-title').textContent = 'Nuova prenotazione'; });
+$('#btn-new-pren').addEventListener('click', () => { $('#f-pren').reset(); apri(dlgPren); });
+$('#f-pren').addEventListener('reset', (e) => { delete e.target.dataset.id; $('#pren-form-title').textContent = 'Nuova prenotazione'; $('[data-again]', e.target).hidden = false; });
 $('#f-pren').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target; const fd = new FormData(f);
   const ci = fd.get('check_in'); const co = fd.get('check_out');
   if (!(co > ci)) return toast('Il check-out deve essere dopo il check-in', true);
+  const again = e.submitter?.dataset.again === '1';
   const id = f.dataset.id || `p${Date.now().toString(36)}`;
   const rec = { id, canale: fd.get('canale'), check_in: ci, check_out: co, lordo: Math.round(Number(fd.get('lordo')) * 100) / 100, stato: fd.get('stato'), nota: String(fd.get('nota') || '') };
   data.prenotazioni = data.prenotazioni.filter((x) => x.id !== id).concat(rec);
-  try { await persist(`Prenotazione ${ci} → ${co}`); f.reset(); } catch (err) { if (err?.message) toast(err.message, true); }
+  apriMese('pren', co.slice(0, 7));
+  try {
+    await persist(`Prenotazione ${ci} → ${co}`);
+    f.reset();
+    if (again) f.elements[1]?.focus({ preventScroll: true }); else dlgPren.close();
+  } catch (err) { if (err?.message) toast(err.message, true); }
 });
 
 function fillIncasso(x) {
@@ -724,19 +804,23 @@ $('#f-incasso').addEventListener('submit', async (e) => {
 
 function fillSpesa(s) {
   const f = $('#f-spesa');
+  f.reset();
   f.stato.value = statoSpesa(s); aggiornaEtichettaData();
   f.data.value = s.data; f.categoria.value = s.categoria; f.importo.value = s.importo;
   f.competenza_dal.value = s.competenza_dal || ''; f.competenza_al.value = s.competenza_al || ''; f.descrizione.value = s.descrizione || '';
   f.dataset.id = s.id;
   $('#sp-form-title').textContent = 'Modifica spesa';
-  f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  $('[data-again]', f).hidden = true;
+  apri(dlgSp);
 }
 function aggiornaEtichettaData() { $('#lbl-data').textContent = ETICHETTA_DATA[$('#sel-stato').value] || ETICHETTA_DATA.pagata; }
 $('#sel-stato').addEventListener('change', aggiornaEtichettaData);
-$('#f-spesa').addEventListener('reset', (e) => { delete e.target.dataset.id; $('#sp-form-title').textContent = 'Nuova spesa'; setTimeout(aggiornaEtichettaData, 0); });
+$('#btn-new-sp').addEventListener('click', () => { $('#f-spesa').reset(); apri(dlgSp); });
+$('#f-spesa').addEventListener('reset', (e) => { delete e.target.dataset.id; $('#sp-form-title').textContent = 'Nuova spesa'; $('[data-again]', e.target).hidden = false; setTimeout(aggiornaEtichettaData, 0); });
 $('#f-spesa').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target; const fd = new FormData(f);
+  const again = e.submitter?.dataset.again === '1';
   const id = f.dataset.id || `s${Date.now().toString(36)}`;
   const prev = data.spese.find((x) => x.id === id);
   let dal = fd.get('competenza_dal') || fd.get('data').slice(0, 7);
@@ -748,8 +832,10 @@ $('#f-spesa').addEventListener('submit', async (e) => {
     const rec = { ...(prev || {}), id, stato, scadenza: stato === 'pagata' ? prev?.scadenza : fd.get('data'), data: fd.get('data'), categoria: fd.get('categoria'), importo: Number(fd.get('importo')),
       competenza_dal: dal, competenza_al: al, descrizione: fd.get('descrizione'), allegati: [...(prev?.allegati || []), ...(path ? [path] : [])] };
     data.spese = data.spese.filter((x) => x.id !== id).concat(rec);
+    apriMese('sp', rec.data.slice(0, 7));
     await persist(`Spesa ${CATEGORIE[rec.categoria]} ${eur(rec.importo, 2)}`);
     f.reset();
+    if (again) f.elements[0]?.focus({ preventScroll: true }); else dlgSp.close();
   } catch (err) { if (err?.message) toast(err.message, true); }
 });
 

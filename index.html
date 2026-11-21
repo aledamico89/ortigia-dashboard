@@ -14,10 +14,10 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Ortigia Investimento</title>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-  <link rel="stylesheet" href="css/style.css?v=20261107a">
+  <link rel="stylesheet" href="css/style.css?v=20261121a">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-  <script type="module" src="js/app.js?v=20261107a"></script>
+  <script type="module" src="js/app.js?v=20261121a"></script>
 </head>
 <body>
 <header class="top">
@@ -191,57 +191,42 @@
       <div class="table-wrap"><table id="t-incassi"></table></div>
     </div>
 
-    <div class="section-title"><h2>Prenotazioni in arrivo</h2><span class="sub">inseriscile a mano dal gestionale: servono solo a prevedere se coprono la rata, non entrano nelle metriche</span></div>
-    <div class="grid g2">
-      <div class="card">
-        <div class="card-head"><h3 id="pren-form-title">Nuova prenotazione</h3></div>
-        <form id="f-pren">
-          <div class="row">
-            <label class="f">Canale<select name="canale"><option>Booking</option><option>Airbnb</option><option>Diretta</option><option>Altro</option></select></label>
-            <label class="f">Check-in<input type="date" name="check_in" required></label>
-            <label class="f">Check-out<input type="date" name="check_out" required></label>
-            <label class="f">Importo lordo totale (€)<input type="number" step="0.01" min="0" name="lordo" required></label>
-            <label class="f">Stato<select name="stato"><option value="confermata">confermata</option><option value="cancellata">cancellata</option></select></label>
-            <label class="f wide">Nota (senza nome dell'ospite)<input type="text" name="nota"></label>
-          </div>
-          <div class="actions"><button class="btn primary" type="submit">Salva prenotazione</button><button class="btn ghost" type="reset">Annulla</button></div>
-        </form>
-      </div>
-      <div class="card">
-        <div class="card-head"><h3>Come funziona</h3></div>
-        <p class="prose">Inserisci l'importo lordo che vedi nel gestionale (quello pagato dall'ospite). La dashboard stima quanto resta a te togliendo la commissione del canale e il 30% del PM, e lo confronta con la rata del mutuo.</p>
-        <p class="prose">Ogni prenotazione conta per il mese di <strong>check-out</strong>, come nel resoconto del PM. Quando importi il resoconto di quel mese, i numeri veri sostituiscono quelli inseriti qui.</p>
-      </div>
-    </div>
-    <div class="card mt"><div class="table-wrap"><table id="t-pren"></table></div></div>
+    <div class="section-title"><h2>Prenotazioni</h2><button type="button" class="info" data-info="prenotazioni" data-ctx="registro" aria-label="Spiegazione: Prenotazioni" aria-expanded="false" aria-controls="info-pop">?</button><span class="sub">previsione per la copertura della rata · non entrano nelle metriche</span><button type="button" class="btn primary small" id="btn-new-pren" style="margin-left:auto;align-self:center">+ Nuova prenotazione</button></div>
+    <div class="acc" id="acc-pren"></div>
+    <dialog id="dlg-pren" class="modal" aria-labelledby="pren-form-title"><div class="modal-body">
+      <div class="modal-head"><h3 id="pren-form-title">Nuova prenotazione</h3><button type="button" class="info" data-info="prenotazioni" data-ctx="registro" aria-label="Spiegazione: Prenotazioni" aria-expanded="false" aria-controls="info-pop">?</button><button type="button" class="modal-x" data-close aria-label="Chiudi">×</button></div>
+      <form id="f-pren">
+        <div class="row">
+          <label class="f">Canale<select name="canale"><option>Booking</option><option>Airbnb</option><option>Diretta</option><option>Altro</option></select></label>
+          <label class="f">Check-in<input type="date" name="check_in" required></label>
+          <label class="f">Check-out<input type="date" name="check_out" required></label>
+          <label class="f">Importo lordo totale (€)<input type="number" step="0.01" min="0" name="lordo" required></label>
+          <label class="f">Stato<select name="stato"><option value="confermata">confermata</option><option value="cancellata">cancellata</option></select></label>
+          <label class="f wide">Nota (senza nome dell'ospite)<input type="text" name="nota"></label>
+        </div>
+        <div class="actions"><button class="btn primary" type="submit">Salva</button><button class="btn" type="submit" data-again="1">Salva e aggiungi un'altra</button><button class="btn ghost" type="button" data-close>Annulla</button></div>
+      </form>
+    </div></dialog>
 
-    <div class="section-title"><h2>Spese e bollette</h2><span class="sub">ogni importo viene ripartito sui mesi di competenza</span></div>
-    <div class="grid g2">
-      <div class="card">
-        <div class="card-head"><h3 id="sp-form-title">Nuova spesa</h3></div>
-        <form id="f-spesa">
-          <div class="row">
-            <label class="f">Stato<select name="stato" id="sel-stato"><option value="pagata">Pagata</option><option value="da_pagare">Da pagare</option><option value="programmata">Programmata</option></select></label>
-            <label class="f"><span id="lbl-data">Data pagamento</span><input type="date" name="data" required></label>
-            <label class="f">Categoria<select name="categoria" id="sel-cat"></select></label>
-            <label class="f">Importo (€)<input type="number" step="0.01" name="importo" required></label>
-            <label class="f">Competenza dal<input type="month" name="competenza_dal"></label>
-            <label class="f">Competenza al<input type="month" name="competenza_al"></label>
-            <label class="f wide">Descrizione<input type="text" name="descrizione" placeholder="es. Edison bimestre nov–dic"></label>
-            <label class="f wide">Allegato (bolletta, F24…)<input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg"></label>
-          </div>
-          <div class="actions"><button class="btn primary" type="submit">Salva spesa</button><button class="btn ghost" type="reset">Annulla</button></div>
-        </form>
-      </div>
-      <div class="card">
-        <div class="card-head"><h3>Come funziona</h3></div>
-        <p class="prose">Per ogni categoria la dashboard usa l'importo reale nei mesi coperti da una bolletta; nei mesi non ancora coperti usa la quota mensile del budget (modificabile in <em>Impostazioni</em>), marcata come stima.</p>
-        <p class="prose">Esempi: bolletta Edison di 180 € per nov–dic → competenza 2026-11 → 2026-12. TARI annuale → competenza gen–dic. Un <strong>rimborso anticipato</strong> riduce il debito e ricalcola la rata. Una <strong>cedolare versata (F24)</strong> abbassa le tasse da accantonare.</p>
-        <p class="prose"><strong>Stato:</strong> <em>da pagare</em> = bolletta ricevuta con scadenza (es. TARI «entro il…»); <em>programmata</em> = addebito già fissato (es. RID) con la data prevista; <em>pagata</em> = uscita effettiva. Lo stato non cambia i conti: una bolletta ricevuta è già un costo di competenza, qualunque sia il suo stato.</p>
-      </div>
-    </div>
+    <div class="section-title"><h2>Spese e bollette</h2><button type="button" class="info" data-info="spese" data-ctx="registro" aria-label="Spiegazione: Spese e bollette" aria-expanded="false" aria-controls="info-pop">?</button><span class="sub">ogni importo viene ripartito sui mesi di competenza</span><button type="button" class="btn primary small" id="btn-new-sp" style="margin-left:auto;align-self:center">+ Nuova spesa</button></div>
     <div id="sp-riepilogo"></div>
-    <div class="card mt"><div class="table-wrap"><table id="t-spese"></table></div></div>
+    <div class="acc mt" id="acc-sp"></div>
+    <dialog id="dlg-sp" class="modal" aria-labelledby="sp-form-title"><div class="modal-body">
+      <div class="modal-head"><h3 id="sp-form-title">Nuova spesa</h3><button type="button" class="info" data-info="spese" data-ctx="registro" aria-label="Spiegazione: Spese e bollette" aria-expanded="false" aria-controls="info-pop">?</button><button type="button" class="modal-x" data-close aria-label="Chiudi">×</button></div>
+      <form id="f-spesa">
+        <div class="row">
+          <label class="f">Stato<select name="stato" id="sel-stato"><option value="pagata">Pagata</option><option value="da_pagare">Da pagare</option><option value="programmata">Programmata</option></select></label>
+          <label class="f"><span id="lbl-data">Data pagamento</span><input type="date" name="data" required></label>
+          <label class="f">Categoria<select name="categoria" id="sel-cat"></select></label>
+          <label class="f">Importo (€)<input type="number" step="0.01" name="importo" required></label>
+          <label class="f">Competenza dal<input type="month" name="competenza_dal"></label>
+          <label class="f">Competenza al<input type="month" name="competenza_al"></label>
+          <label class="f wide">Descrizione<input type="text" name="descrizione" placeholder="es. Edison bimestre nov–dic"></label>
+          <label class="f wide">Allegato (bolletta, F24…)<input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg"></label>
+        </div>
+        <div class="actions"><button class="btn primary" type="submit">Salva</button><button class="btn" type="submit" data-again="1">Salva e aggiungi un'altra</button><button class="btn ghost" type="button" data-close>Annulla</button></div>
+      </form>
+    </div></dialog>
 
     <div class="section-title"><h2>Stime di valore</h2><span class="sub">perizie, valutazioni agenzia, tue stime</span></div>
     <div class="card">
